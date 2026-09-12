@@ -175,6 +175,87 @@ export type Database = {
         }
         Relationships: []
       }
+      payment_config: {
+        Row: {
+          api_key: string | null
+          api_url: string | null
+          created_at: string
+          enabled: boolean
+          id: number
+          merchant_name: string
+          timeout_minutes: number
+          updated_at: string
+          webhook_secret: string | null
+        }
+        Insert: {
+          api_key?: string | null
+          api_url?: string | null
+          created_at?: string
+          enabled?: boolean
+          id?: number
+          merchant_name?: string
+          timeout_minutes?: number
+          updated_at?: string
+          webhook_secret?: string | null
+        }
+        Update: {
+          api_key?: string | null
+          api_url?: string | null
+          created_at?: string
+          enabled?: boolean
+          id?: number
+          merchant_name?: string
+          timeout_minutes?: number
+          updated_at?: string
+          webhook_secret?: string | null
+        }
+        Relationships: []
+      }
+      payment_intents: {
+        Row: {
+          amount: number
+          bank_payload: Json | null
+          bank_ref: string | null
+          created_at: string
+          expires_at: string
+          fail_reason: string | null
+          id: string
+          provider_txn_id: string | null
+          qr_payload: string | null
+          settled_at: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          bank_payload?: Json | null
+          bank_ref?: string | null
+          created_at?: string
+          expires_at: string
+          fail_reason?: string | null
+          id?: string
+          provider_txn_id?: string | null
+          qr_payload?: string | null
+          settled_at?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          bank_payload?: Json | null
+          bank_ref?: string | null
+          created_at?: string
+          expires_at?: string
+          fail_reason?: string | null
+          id?: string
+          provider_txn_id?: string | null
+          qr_payload?: string | null
+          settled_at?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       product_stock: {
         Row: {
           created_at: string
@@ -265,6 +346,9 @@ export type Database = {
       }
       profiles: {
         Row: {
+          ban_reason: string | null
+          banned: boolean
+          banned_at: string | null
           created_at: string
           email: string
           id: string
@@ -272,6 +356,9 @@ export type Database = {
           wallet_balance: number
         }
         Insert: {
+          ban_reason?: string | null
+          banned?: boolean
+          banned_at?: string | null
           created_at?: string
           email: string
           id: string
@@ -279,6 +366,9 @@ export type Database = {
           wallet_balance?: number
         }
         Update: {
+          ban_reason?: string | null
+          banned?: boolean
+          banned_at?: string | null
           created_at?: string
           email?: string
           id?: string
@@ -455,6 +545,8 @@ export type Database = {
           qr_url: string | null
           site_name: string
           slide_url: string | null
+          spin_cost: number
+          spin_enabled: boolean
         }
         Insert: {
           announcement?: string | null
@@ -469,6 +561,8 @@ export type Database = {
           qr_url?: string | null
           site_name?: string
           slide_url?: string | null
+          spin_cost?: number
+          spin_enabled?: boolean
         }
         Update: {
           announcement?: string | null
@@ -483,6 +577,86 @@ export type Database = {
           qr_url?: string | null
           site_name?: string
           slide_url?: string | null
+          spin_cost?: number
+          spin_enabled?: boolean
+        }
+        Relationships: []
+      }
+      slip_refs: {
+        Row: {
+          amount: number | null
+          created_at: string
+          id: string
+          ref: string
+          user_id: string | null
+        }
+        Insert: {
+          amount?: number | null
+          created_at?: string
+          id?: string
+          ref: string
+          user_id?: string | null
+        }
+        Update: {
+          amount?: number | null
+          created_at?: string
+          id?: string
+          ref?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      spin_history: {
+        Row: {
+          amount: number
+          cost: number
+          created_at: string
+          id: string
+          prize_label: string
+          user_id: string
+        }
+        Insert: {
+          amount?: number
+          cost?: number
+          created_at?: string
+          id?: string
+          prize_label: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          cost?: number
+          created_at?: string
+          id?: string
+          prize_label?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      spin_prizes: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          label: string
+          sort: number
+          weight: number
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          id?: string
+          label: string
+          sort?: number
+          weight?: number
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          label?: string
+          sort?: number
+          weight?: number
         }
         Relationships: []
       }
@@ -550,13 +724,25 @@ export type Database = {
       }
     }
     Functions: {
+      admin_set_ban: {
+        Args: { _banned: boolean; _reason?: string; _user_id: string }
+        Returns: undefined
+      }
       admin_set_wallet: {
         Args: { _new_balance: number; _user_id: string }
         Returns: undefined
       }
       admin_stats: { Args: never; Returns: Json }
+      admin_user_summary: { Args: { _user_id: string }; Returns: Json }
       approve_card_topup: { Args: { _id: string }; Returns: undefined }
       approve_topup: { Args: { _topup_id: string }; Returns: undefined }
+      cancel_payment_intent: { Args: { _id: string }; Returns: undefined }
+      claim_slip_ref: {
+        Args: { _amount?: number; _ref: string }
+        Returns: boolean
+      }
+      create_payment_intent: { Args: { _amount: number }; Returns: Json }
+      expire_payment_intents: { Args: never; Returns: undefined }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -580,6 +766,17 @@ export type Database = {
         Args: { _order_id: string; _success: boolean }
         Returns: undefined
       }
+      settle_payment_intent: {
+        Args: {
+          _bank_ref: string
+          _id: string
+          _ok: boolean
+          _payload: Json
+          _reason: string
+        }
+        Returns: Json
+      }
+      spin_wheel: { Args: never; Returns: Json }
       submit_card_topup: { Args: { _card: string }; Returns: Json }
       top_spenders: {
         Args: never
