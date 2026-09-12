@@ -1,0 +1,991 @@
+import { useEffect, useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { supabase } from "@/integrations/supabase/client";
+import { statusDialog } from "./StatusDialog";
+import { formatKip } from "@/lib/format";
+import { Eye, Plus, Pencil, Trash2, Check, X, Send, Ban } from "lucide-react";
+import { THEME_PRESETS } from "@/lib/theme";
+import { adminSetUserPassword } from "@/lib/admin.functions";
+
+
+type Category = { id: string; name: string; image_url: string | null; sort: number };
+type Product = {
+  id: string; name: string; price: number; original_price: number | null;
+  description: string | null; image_url: string | null; is_service: boolean;
+  service_field_label: string | null; category_id: string | null; hidden_from_home: boolean;
+};
+
+type AdminTab =
+  | "stats" | "topups" | "cards" | "orders" | "services"
+  | "svcmanage" | "categories" | "products" | "users" | "spin" | "settings";
+
+const ADMIN_GROUPS: { label: string; items: { value: AdminTab; label: string; dot?: "topups" | "cards" | "services" }[] }[] = [
+  { label: "ພາບລວມ", items: [{ value: "stats", label: "ສະຖິຕິ" }] },
+  {
+    label: "ອະນຸມັດ / ອໍເດີ",
+    items: [
+      { value: "topups", label: "ເຕີມເງີນ QR", dot: "topups" },
+      { value: "cards", label: "ບັດເຕີມເງີນ", dot: "cards" },
+      { value: "orders", label: "ອໍເດີສິນຄ້າ" },
+      { value: "services", label: "ອໍເດີບໍລິການ", dot: "services" },
+    ],
+  },
+  {
+    label: "ຈັດການສິນຄ້າ",
+    items: [
+      { value: "categories", label: "ໝວດໝູ່" },
+      { value: "products", label: "ສິນຄ້າທົ່ວໄປ" },
+      { value: "svcmanage", label: "ສິນຄ້າບໍລິການ" },
+    ],
+  },
+  { label: "ລະບົບ", items: [{ value: "users", label: "ຜູ້ໃຊ້" }, { value: "spin", label: "ມິນິເກມ" }, { value: "settings", label: "ຕັ້ງຄ່າເວັບ" }] },
+];
+
+export function AdminPanel() {
+  const [tab, setTab] = useState<AdminTab>("stats");
+  const [pending, setPending] = useState({ topups: 0, cards: 0, services: 0 });
+
+  useEffect(() => {
+    const load = async () => {
+      const count = async (table: "topups" | "card_topups" | "service_orders") =>
+        (await supabase.from(table).select("*", { count: "exact", head: true }).eq("status", "pending")).count ?? 0;
+      setPending({ topups: await count("topups"), cards: await count("card_topups"), services: await count("service_orders") });
+    };
+    load();
+    const t = setInterval(load, 20000);
+    return () => clearInterval(t);
+  }, [tab]);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {ADMIN_GROUPS.map((g) => (
+          <div key={g.label} className="rounded-2xl bg-card shadow-sm p-3">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground mb-2">{g.label}</div>
+            <div className="space-y-1.5">
+              {g.items.map((it) => {
+                const active = tab === it.value;
+                const badge = it.dot ? pending[it.dot] : 0;
+                return (
+                  <button
+                    key={it.value}
+                    onClick={() => setTab(it.value)}
+                    className={`w-full flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition text-left ${active ? "bg-primary text-primary-foreground shadow" : "hover:bg-accent"}`}
+                  >
+                    <span className="flex-1 truncate">{it.label}</span>
+                    {badge > 0 && (
+                      <span className="shrink-0 min-w-5 h-5 px-1.5 rounded-full bg-destructive text-destructive-foreground text-[11px] font-bold flex items-center justify-center animate-pulse">
+                        {badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="rounded-2xl bg-card shadow-sm p-3">
+        {tab === "stats" && <AdminStats />}
+        {tab === "topups" && <AdminTopups />}
+        {tab === "cards" && <AdminCards />}
+        {tab === "orders" && <AdminOrders />}
+        {tab === "services" && <AdminServices />}
+        {tab === "svcmanage" && <AdminServiceProducts />}
+        {tab === "categories" && <AdminCategories />}
+        {tab === "products" && <AdminProducts />}
+        {tab === "users" && <AdminUsers />}
+        {tab === "spin" && <AdminSpin />}
+        {tab === "settings" && <AdminSettings />}
+      </div>
+    </div>
+  );
+}
+
+/** Load username/email for a list of user ids (no FK embed available on these tables). */
+async function loadProfiles(ids: string[]) {
+  const uniq = [...new Set(ids)].filter(Boolean);
+  if (uniq.length === 0) return {} as Record<string, { username: string; email: string }>;
+  const { data } = await supabase.from("profiles").select("id,username,email").in("id", uniq);
+  return Object.fromEntries((data ?? []).map((p) => [p.id, { username: p.username, email: p.email }]));
+}
+
+const ST_TEXT: Record<string, string> = { pending: "ລໍຖ້າ", approved: "ສຳເລັດ", rejected: "ປະຕິເສດ", success: "ສຳເລັດ" };
+function StatusChip({ status }: { status: string }) {
+  const cls = status === "approved" || status === "success"
+    ? "bg-[color:var(--color-success)]/15 text-[color:var(--color-success)]"
+    : status === "rejected" ? "bg-destructive/15 text-destructive" : "bg-primary/10 text-primary";
+  return <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${cls}`}>{ST_TEXT[status] ?? status}</span>;
+}
+
+function AdminCards() {
+  type Row = { id: string; user_id: string; card_code: string; net_amount: number; status: string; created_at: string; note: string | null };
+  const [rows, setRows] = useState<Row[]>([]);
+  const [profiles, setProfiles] = useState<Record<string, { username: string; email: string }>>({});
+  const [onlyPending, setOnlyPending] = useState(true);
+  const load = async () => {
+    let q = supabase.from("card_topups").select("*").order("created_at", { ascending: false }).limit(100);
+    if (onlyPending) q = supabase.from("card_topups").select("*").eq("status", "pending").order("created_at");
+    const { data } = await q;
+    const list = (data as never as Row[]) ?? [];
+    setRows(list);
+    setProfiles(await loadProfiles(list.map((r) => r.user_id)));
+  };
+  useEffect(() => { load(); }, [onlyPending]);
+  const act = async (id: string, ok: boolean) => {
+    const { error } = await supabase.rpc(ok ? "approve_card_topup" : "reject_card_topup", { _id: id });
+    if (error) return statusDialog.error("ລົ້ມເຫຼວ", error.message);
+    statusDialog.success("ສຳເລັດ", ok ? "ອະນຸມັດແລ້ວ (+6,000₭)" : "ປະຕິເສດແລ້ວ");
+    load();
+  };
+  return (
+    <div className="space-y-2 py-3">
+      <div className="flex gap-2">
+        <Button size="sm" variant={onlyPending ? "default" : "outline"} onClick={() => setOnlyPending(true)}>ລໍຖ້າອະນຸມັດ</Button>
+        <Button size="sm" variant={!onlyPending ? "default" : "outline"} onClick={() => setOnlyPending(false)}>ປະຫວັດທັງໝົດ</Button>
+      </div>
+      {rows.length === 0 && <div className="text-center text-sm text-muted-foreground py-6">ບໍ່ມີບັດ</div>}
+      {rows.map((r) => (
+        <div key={r.id} className="border rounded-xl p-3 text-sm">
+          <div className="flex items-center gap-2">
+            <div className="font-semibold flex-1 truncate">{profiles[r.user_id]?.username ?? "-"} <span className="text-xs text-muted-foreground">({profiles[r.user_id]?.email ?? "-"})</span></div>
+            <StatusChip status={r.status} />
+          </div>
+          <div className="font-mono text-xs bg-muted p-2 rounded mt-1 cursor-pointer" onClick={() => { navigator.clipboard.writeText(r.card_code); statusDialog.success("ຄັດລອກແລ້ວ", ""); }}>{r.card_code}</div>
+          <div className="text-xs text-muted-foreground mt-1">{new Date(r.created_at).toLocaleString()} · ຮັບຈິງ {formatKip(r.net_amount)}</div>
+          {r.note && <div className="text-xs mt-1">ໝາຍເຫດ: {r.note}</div>}
+          {r.status === "pending" && (
+            <div className="flex gap-2 mt-2">
+              <Button size="sm" onClick={() => act(r.id, true)}><Check className="h-4 w-4" />ອະນຸມັດ</Button>
+              <Button size="sm" variant="destructive" onClick={() => act(r.id, false)}><X className="h-4 w-4" />ປະຕິເສດ</Button>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
+function AdminStats() {
+  const [s, setS] = useState({ members: 0, visits: 0, revenue: 0, monthRevenue: 0, orderCount: 0 });
+  useEffect(() => {
+    (async () => {
+      const [m, v, tp, tpMonth, oc] = await Promise.all([
+        supabase.from("profiles").select("*", { count: "exact", head: true }),
+        supabase.from("page_views").select("*", { count: "exact", head: true }),
+        supabase.from("topups").select("amount").eq("status", "approved"),
+        supabase.from("topups").select("amount").eq("status", "approved").gte("created_at", new Date(Date.now() - 30 * 86400000).toISOString()),
+        supabase.from("orders").select("*", { count: "exact", head: true }),
+      ]);
+      setS({
+        members: m.count ?? 0, visits: v.count ?? 0,
+        revenue: (tp.data ?? []).reduce((a, b) => a + Number(b.amount), 0),
+        monthRevenue: (tpMonth.data ?? []).reduce((a, b) => a + Number(b.amount), 0),
+        orderCount: oc.count ?? 0,
+      });
+    })();
+  }, []);
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 py-3">
+      <Stat label="ສະມາຊິກທັງໝົດ" value={s.members} />
+      <Stat label="ອໍເດີ" value={s.orderCount} />
+      <Stat label="ລາຍຮັບເດືອນ" value={formatKip(s.monthRevenue)} />
+      <Stat label="ລາຍຮັບລວມ" value={formatKip(s.revenue)} />
+    </div>
+  );
+}
+function Stat({ label, value }: { label: string; value: number | string }) {
+  return <div className="rounded-xl border p-4 bg-card"><div className="text-xs text-muted-foreground">{label}</div><div className="text-lg font-bold">{value}</div></div>;
+}
+
+function AdminTopups() {
+  type Row = { id: string; user_id: string; amount: number; slip_url: string | null; status: string; created_at: string; note: string | null };
+  const [rows, setRows] = useState<Row[]>([]);
+  const [profiles, setProfiles] = useState<Record<string, { username: string; email: string }>>({});
+  const [slipUrls, setSlipUrls] = useState<Record<string, string>>({});
+  const [onlyPending, setOnlyPending] = useState(false);
+  const load = async () => {
+    const base = supabase.from("topups").select("*").eq("method", "qr");
+    const { data } = onlyPending
+      ? await base.eq("status", "pending").order("created_at")
+      : await base.order("created_at", { ascending: false }).limit(60);
+    const list = (data as never as Row[]) ?? [];
+    setRows(list);
+    setProfiles(await loadProfiles(list.map((r) => r.user_id)));
+    const urls: Record<string, string> = {};
+    for (const r of list) {
+      if (!r.slip_url) continue;
+      const { data: sig } = await supabase.storage.from("slips").createSignedUrl(r.slip_url, 3600);
+      if (sig) urls[r.id] = sig.signedUrl;
+    }
+    setSlipUrls(urls);
+  };
+  useEffect(() => { load(); }, [onlyPending]);
+  const act = async (id: string, ok: boolean) => {
+    const { error } = await supabase.rpc(ok ? "approve_topup" : "reject_topup", { _topup_id: id });
+    if (error) return statusDialog.error("ລົ້ມເຫຼວ", error.message);
+    statusDialog.success("ສຳເລັດ", ok ? "ອະນຸມັດແລ້ວ" : "ປະຕິເສດແລ້ວ");
+    load();
+  };
+  return (
+    <div className="space-y-2 py-3">
+      <div className="flex gap-2">
+        <Button size="sm" variant={!onlyPending ? "default" : "outline"} onClick={() => setOnlyPending(false)}>ປະຫວັດທັງໝົດ</Button>
+        <Button size="sm" variant={onlyPending ? "default" : "outline"} onClick={() => setOnlyPending(true)}>ລໍຖ້າອະນຸມັດ</Button>
+      </div>
+      {rows.length === 0 && <div className="text-center text-sm text-muted-foreground py-6">ບໍ່ມີລາຍການ</div>}
+      {rows.map((r) => (
+        <div key={r.id} className="border rounded-xl p-3 flex gap-3 items-start">
+          {slipUrls[r.id] && <a href={slipUrls[r.id]} target="_blank" rel="noopener noreferrer"><img src={slipUrls[r.id]} alt="slip" className="w-20 h-20 object-cover rounded-lg" /></a>}
+          <div className="flex-1 text-sm min-w-0">
+            <div className="flex items-center gap-2">
+              <div className="font-semibold flex-1 truncate">{profiles[r.user_id]?.username ?? "-"} <span className="text-xs text-muted-foreground">({profiles[r.user_id]?.email ?? "-"})</span></div>
+              <StatusChip status={r.status} />
+            </div>
+            <div>{formatKip(r.amount)}</div>
+            <div className="text-xs text-muted-foreground">{new Date(r.created_at).toLocaleString()}</div>
+            {r.note && <div className="text-xs mt-1">ເຫດຜົນ: {r.note}</div>}
+            {r.status === "pending" && (
+              <div className="flex gap-2 mt-2">
+                <Button size="sm" onClick={() => act(r.id, true)}><Check className="h-4 w-4" />ອະນຸມັດ</Button>
+                <Button size="sm" variant="destructive" onClick={() => act(r.id, false)}><X className="h-4 w-4" />ປະຕິເສດ</Button>
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
+function AdminOrders() {
+  const [rows, setRows] = useState<{ id: string; product_name: string; price: number; game_data: string | null; created_at: string; profiles: { username: string } | null }[]>([]);
+  useEffect(() => {
+    supabase.from("orders").select("*, profiles(username)").order("created_at", { ascending: false }).limit(100)
+      .then(({ data }) => setRows(data as never ?? []));
+  }, []);
+  return (
+    <div className="space-y-2 py-3">
+      {rows.length === 0 && <div className="text-center text-sm text-muted-foreground py-6">ຍັງບໍ່ມີອໍເດີ</div>}
+      {rows.map((r) => (
+        <div key={r.id} className="border rounded-lg p-3 text-sm">
+          <div className="font-semibold">{r.product_name} — {formatKip(r.price)}</div>
+          <div className="text-xs text-muted-foreground">{r.profiles?.username} · {new Date(r.created_at).toLocaleString()}</div>
+          {r.game_data && <div className="mt-1 p-2 bg-muted rounded text-xs break-all cursor-pointer" onClick={() => { navigator.clipboard.writeText(r.game_data!); statusDialog.success("ຄັດລອກແລ້ວ", ""); }}>{r.game_data}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AdminServices() {
+  type Row = {
+    id: string; user_id: string; product_name: string; package_name: string | null; price: number;
+    customer_note: string; answers: { label: string; value: string }[] | null; status: string; created_at: string;
+    profiles: { username: string; email: string } | null;
+  };
+  const [rows, setRows] = useState<Row[]>([]);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [msgText, setMsgText] = useState("");
+  const load = async () => {
+    const { data } = await supabase.from("service_orders").select("*, profiles(username,email)").order("created_at", { ascending: false }).limit(100);
+    setRows((data as never) ?? []);
+  };
+  useEffect(() => { load(); }, []);
+
+  const resolve = async (id: string, ok: boolean) => {
+    const { error } = await supabase.rpc("resolve_service_order", { _order_id: id, _success: ok });
+    if (error) return statusDialog.error("ລົ້ມເຫຼວ", error.message);
+    statusDialog.success("ສຳເລັດ", ok ? "ຢືນຢັນອໍເດີແລ້ວ" : "ປະຕິເສດ ແລະ ຄືນເງີນແລ້ວ");
+    setOpenId(null); load();
+  };
+  const sendMsg = async (userId: string) => {
+    if (!msgText.trim()) return;
+    const { error } = await supabase.from("messages").insert({ user_id: userId, content: msgText, from_admin: true });
+    if (error) return statusDialog.error("ລົ້ມເຫຼວ", error.message);
+    setMsgText("");
+    statusDialog.success("ສົ່ງແລ້ວ", "ສົ່ງຂໍ້ຄວາມຫາລູກຄ້າແລ້ວ");
+  };
+  const stText: Record<string, string> = { pending: "ລໍຖ້າ", success: "ສຳເລັດ", rejected: "ປະຕິເສດ" };
+
+  return (
+    <div className="space-y-2 py-3">
+      {rows.length === 0 && <div className="text-center text-sm text-muted-foreground py-6">ຍັງບໍ່ມີອໍເດີບໍລິການ</div>}
+      {rows.map((r) => (
+        <div key={r.id} className="border rounded-2xl p-3 text-sm">
+          <div className="flex items-center gap-2">
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold truncate">{r.product_name}{r.package_name ? ` · ${r.package_name}` : ""}</div>
+              <div className="text-xs text-muted-foreground truncate">{r.profiles?.username} · {formatKip(r.price)} · {stText[r.status] ?? r.status}</div>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => setOpenId(openId === r.id ? null : r.id)}><Eye className="h-4 w-4" />ດູຂໍ້ມູນ</Button>
+          </div>
+          {openId === r.id && (
+            <div className="mt-3 space-y-2 border-t pt-3">
+              <Info label="ຊື່ຜູ້ໃຊ້" value={r.profiles?.username ?? "-"} />
+              <Info label="ອີເມວ" value={r.profiles?.email ?? "-"} />
+              <Info label="ວັນທີສັ່ງ" value={new Date(r.created_at).toLocaleString()} />
+              <Info label="ຊື່ສິນຄ້າ" value={r.product_name} />
+              <Info label="ແພັກເກດ" value={r.package_name ?? "-"} />
+              <Info label="ຈຳນວນເງີນ" value={formatKip(r.price)} />
+              <div className="rounded-xl bg-muted p-2 space-y-1">
+                <div className="text-xs font-semibold">ຂໍ້ມູນທີ່ລູກຄ້າກອກ</div>
+                {(r.answers && r.answers.length > 0 ? r.answers : [{ label: "ຫມາຍເຫດ", value: r.customer_note }]).map((a, i) => (
+                  <div key={i} className="text-xs break-all cursor-pointer" onClick={() => { navigator.clipboard.writeText(a.value); statusDialog.success("ຄັດລອກແລ້ວ", ""); }}>
+                    <b>{a.label}:</b> {a.value}
+                  </div>
+                ))}
+              </div>
+              {r.status === "pending" && (
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => resolve(r.id, true)}><Check className="h-4 w-4" />ຢືນຢັນ</Button>
+                  <Button size="sm" variant="destructive" onClick={() => resolve(r.id, false)}><X className="h-4 w-4" />ປະຕິເສດ</Button>
+                </div>
+              )}
+              <div className="space-y-2">
+                <Textarea value={msgText} onChange={(e) => setMsgText(e.target.value)} placeholder="ຂໍ້ຄວາມຫາລູກຄ້າ..." rows={2} />
+                <Button size="sm" variant="outline" onClick={() => sendMsg(r.user_id)}><Send className="h-4 w-4" />ສົ່ງຂໍ້ຄວາມ</Button>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Info({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between gap-2 text-xs">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-medium text-right break-all">{value}</span>
+    </div>
+  );
+}
+
+type Pack = { id: string; product_id: string; name: string; price: number; image_url: string | null; sort: number };
+type SField = { id: string; product_id: string; label: string; sort: number };
+
+function AdminServiceProducts() {
+  const [rows, setRows] = useState<Product[]>([]);
+  const [cats, setCats] = useState<Category[]>([]);
+  const [packs, setPacks] = useState<Pack[]>([]);
+  const [fields, setFields] = useState<SField[]>([]);
+  const [editing, setEditing] = useState<Partial<Product> | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [packForm, setPackForm] = useState({ name: "", price: "", image_url: "" });
+  const [fieldDrafts, setFieldDrafts] = useState<string[]>([]);
+
+  const load = async () => {
+    const [{ data: p }, { data: c }, { data: pk }, { data: f }] = await Promise.all([
+      supabase.from("products").select("*").eq("is_service", true).order("created_at", { ascending: false }),
+      supabase.from("categories").select("*").order("sort"),
+      supabase.from("service_packages").select("*").order("sort"),
+      supabase.from("service_fields").select("*").order("sort"),
+    ]);
+    setRows(p ?? []); setCats(c ?? []); setPacks(pk ?? []); setFields(f ?? []);
+  };
+  useEffect(() => { load(); }, []);
+
+  const save = async () => {
+    if (!editing?.name) return;
+    const payload = {
+      name: editing.name, price: Number(editing.price) || 0,
+      original_price: editing.original_price ? Number(editing.original_price) : null,
+      description: editing.description || null, image_url: editing.image_url || null,
+      is_service: true, service_field_label: editing.service_field_label || null,
+      category_id: editing.category_id || null, hidden_from_home: !!editing.hidden_from_home,
+    };
+    const { error } = editing.id
+      ? await supabase.from("products").update(payload).eq("id", editing.id)
+      : await supabase.from("products").insert(payload);
+    if (error) return statusDialog.error("ລົ້ມເຫຼວ", error.message);
+    setEditing(null); statusDialog.success("ບັນທຶກແລ້ວ", ""); load();
+  };
+  const del = async (id: string) => { if (!confirm("ລົບ?")) return; await supabase.from("products").delete().eq("id", id); load(); };
+  const addPack = async (productId: string) => {
+    if (!packForm.name || !packForm.price) return;
+    const { error } = await supabase.from("service_packages").insert({
+      product_id: productId, name: packForm.name, price: Number(packForm.price),
+      image_url: packForm.image_url || null, sort: packs.filter((x) => x.product_id === productId).length,
+    });
+    if (error) return statusDialog.error("ລົ້ມເຫຼວ", error.message);
+    setPackForm({ name: "", price: "", image_url: "" }); load();
+  };
+  const delPack = async (id: string) => { await supabase.from("service_packages").delete().eq("id", id); load(); };
+  const saveFields = async (productId: string) => {
+    await supabase.from("service_fields").delete().eq("product_id", productId);
+    const list = fieldDrafts.map((l, i) => ({ product_id: productId, label: l.trim() || `ຂໍ້ມູນ ${i + 1}`, sort: i }));
+    if (list.length) {
+      const { error } = await supabase.from("service_fields").insert(list);
+      if (error) return statusDialog.error("ລົ້ມເຫຼວ", error.message);
+    }
+    statusDialog.success("ບັນທຶກຊ່ອງກອກແລ້ວ", ""); load();
+  };
+
+  return (
+    <div className="space-y-3 py-3">
+      <Button onClick={() => setEditing({ is_service: true, hidden_from_home: false })}><Plus className="h-4 w-4" />ເພີ່ມສິນຄ້າບໍລິການ</Button>
+      {rows.length === 0 && <div className="text-center text-sm text-muted-foreground py-6">ຍັງບໍ່ມີສິນຄ້າບໍລິການ</div>}
+      {rows.map((r) => {
+        const myPacks = packs.filter((x) => x.product_id === r.id);
+        const myFields = fields.filter((x) => x.product_id === r.id);
+        const open = openId === r.id;
+        return (
+          <div key={r.id} className="border rounded-2xl p-3">
+            <div className="flex gap-2 items-center">
+              {r.image_url && <img src={r.image_url} className="w-14 h-14 rounded-xl object-cover" alt="" />}
+              <div className="flex-1 text-sm min-w-0">
+                <div className="font-semibold truncate">{r.name}</div>
+                <div className="text-xs text-muted-foreground">{formatKip(r.price)} · {myPacks.length} ແພັກເກດ · {myFields.length} ຊ່ອງກອກ</div>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => { setOpenId(open ? null : r.id); setFieldDrafts(myFields.map((f) => f.label)); }}><Plus className="h-4 w-4" /></Button>
+              <Button size="sm" variant="outline" onClick={() => setEditing(r)}><Pencil className="h-4 w-4" /></Button>
+              <Button size="sm" variant="outline" onClick={() => del(r.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+            </div>
+            {open && (
+              <div className="mt-3 space-y-3 border-t pt-3">
+                <div className="space-y-2">
+                  <div className="font-semibold text-sm">ແພັກເກດ</div>
+                  {myPacks.map((k) => (
+                    <div key={k.id} className="flex items-center gap-2 text-sm border rounded-xl p-2">
+                      {k.image_url && <img src={k.image_url} className="w-9 h-9 rounded-lg object-cover" alt="" />}
+                      <div className="flex-1 truncate">{k.name}</div>
+                      <div className="font-semibold">{formatKip(k.price)}</div>
+                      <Button size="sm" variant="ghost" onClick={() => delPack(k.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                    </div>
+                  ))}
+                  <Input placeholder="ຊື່ແພັກເກດ" value={packForm.name} onChange={(e) => setPackForm({ ...packForm, name: e.target.value })} />
+                  <Input type="number" placeholder="ລາຄາ (₭)" value={packForm.price} onChange={(e) => setPackForm({ ...packForm, price: e.target.value })} />
+                  <Input placeholder="ລິ້ງຮູບ (ບໍ່ບັງຄັບ)" value={packForm.image_url} onChange={(e) => setPackForm({ ...packForm, image_url: e.target.value })} />
+                  <Button size="sm" onClick={() => addPack(r.id)}><Plus className="h-4 w-4" />ເພີ່ມແພັກເກດ</Button>
+                </div>
+                <div className="space-y-2">
+                  <div className="font-semibold text-sm flex items-center gap-2">
+                    ຊ່ອງໃຫ້ລູກຄ້າກອກ
+                    <Button size="sm" variant="outline" onClick={() => setFieldDrafts([...fieldDrafts, ""])}><Plus className="h-4 w-4" /></Button>
+                  </div>
+                  {fieldDrafts.map((d, i) => (
+                    <div key={i} className="flex gap-2">
+                      <Input placeholder={`ປ້າຍຊ່ອງ ${i + 1}`} value={d} onChange={(e) => setFieldDrafts(fieldDrafts.map((x, j) => (j === i ? e.target.value : x)))} />
+                      <Button size="sm" variant="ghost" onClick={() => setFieldDrafts(fieldDrafts.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                    </div>
+                  ))}
+                  <Button size="sm" onClick={() => saveFields(r.id)}>ບັນທຶກຊ່ອງກອກ</Button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+        <DialogContent className="max-w-sm max-h-[85vh] overflow-y-auto rounded-3xl">
+          <DialogHeader><DialogTitle>{editing?.id ? "ແກ້ໄຂ" : "ເພີ່ມ"}ສິນຄ້າບໍລິການ</DialogTitle></DialogHeader>
+          {editing && (
+            <div className="space-y-2">
+              <div><Label>ໝວດ</Label>
+                <select className="w-full border rounded-md h-9 px-2 bg-background" value={editing.category_id ?? ""} onChange={(e) => setEditing({ ...editing, category_id: e.target.value || null })}>
+                  <option value="">-</option>
+                  {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div><Label>ຊື່ສິນຄ້າ</Label><Input value={editing.name ?? ""} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></div>
+              <div><Label>ລາຄາເລີ່ມຕົ້ນ (₭)</Label><Input type="number" value={editing.price ?? ""} onChange={(e) => setEditing({ ...editing, price: Number(e.target.value) })} /></div>
+              <div><Label>ລາຄາເດີມ / ຂີດຄ້ຽນ</Label><Input type="number" value={editing.original_price ?? ""} onChange={(e) => setEditing({ ...editing, original_price: Number(e.target.value) })} /></div>
+              <div><Label>ລາຍລະອຽດ</Label><Textarea value={editing.description ?? ""} onChange={(e) => setEditing({ ...editing, description: e.target.value })} /></div>
+              <div><Label>ລິ້ງຮູບ</Label><Input value={editing.image_url ?? ""} onChange={(e) => setEditing({ ...editing, image_url: e.target.value })} /></div>
+              <div className="flex items-center gap-2"><Switch checked={!!editing.hidden_from_home} onCheckedChange={(v) => setEditing({ ...editing, hidden_from_home: v })} /><Label>ຊ່ອນຈາກໜ້າຫຼັກ</Label></div>
+              <Button className="w-full" onClick={save}>ບັນທຶກ</Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function AdminCategories() {
+  const [rows, setRows] = useState<Category[]>([]);
+  const [form, setForm] = useState({ name: "", image_url: "" });
+  const load = () => supabase.from("categories").select("*").order("sort").then(({ data }) => setRows(data ?? []));
+  useEffect(() => { load(); }, []);
+  const add = async () => {
+    if (!form.name) return;
+    const { error } = await supabase.from("categories").insert({ name: form.name, image_url: form.image_url || null });
+    if (error) return statusDialog.error("ລົ້ມເຫຼວ", error.message);
+    setForm({ name: "", image_url: "" }); load();
+  };
+  const del = async (id: string) => {
+    if (!confirm("ລົບ?")) return;
+    await supabase.from("categories").delete().eq("id", id); load();
+  };
+  return (
+    <div className="space-y-3 py-3">
+      <div className="border rounded-lg p-3 space-y-2">
+        <div className="font-semibold text-sm">ເພີ່ມໝວດ</div>
+        <Input placeholder="ຊື່ໝວດ" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        <Input placeholder="ລິ້ງຮູບ (ບໍ່ບັງຄັບ)" value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} />
+        <Button size="sm" onClick={add}><Plus className="h-4 w-4" />ເພີ່ມ</Button>
+      </div>
+      {rows.map((r) => (
+        <div key={r.id} className="border rounded-lg p-2 flex items-center gap-2">
+          {r.image_url && <img src={r.image_url} className="w-12 h-12 rounded object-cover" alt="" />}
+          <div className="flex-1 text-sm font-medium">{r.name}</div>
+          <Button size="sm" variant="ghost" onClick={() => del(r.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AdminProducts() {
+  const [rows, setRows] = useState<Product[]>([]);
+  const [cats, setCats] = useState<Category[]>([]);
+  const [editing, setEditing] = useState<Partial<Product> | null>(null);
+  const [stockFor, setStockFor] = useState<string | null>(null);
+  const [stockText, setStockText] = useState("");
+  const load = async () => {
+    const [{ data: p }, { data: c }] = await Promise.all([
+      supabase.from("products").select("*").order("created_at", { ascending: false }),
+      supabase.from("categories").select("*").order("sort"),
+    ]);
+    setRows(p ?? []); setCats(c ?? []);
+  };
+  useEffect(() => { load(); }, []);
+  const save = async () => {
+    if (!editing?.name) return;
+    const payload = {
+      name: editing.name, price: Number(editing.price) || 0,
+      original_price: editing.original_price ? Number(editing.original_price) : null,
+      description: editing.description || null, image_url: editing.image_url || null,
+      is_service: !!editing.is_service, service_field_label: editing.service_field_label || null,
+      category_id: editing.category_id || null, hidden_from_home: !!editing.hidden_from_home,
+    };
+    const { error } = editing.id
+      ? await supabase.from("products").update(payload).eq("id", editing.id)
+      : await supabase.from("products").insert(payload);
+    if (error) return statusDialog.error("ລົ້ມເຫຼວ", error.message);
+    setEditing(null); load();
+  };
+  const del = async (id: string) => { if (!confirm("ລົບ?")) return; await supabase.from("products").delete().eq("id", id); load(); };
+  const addStock = async (productId: string) => {
+    const lines = stockText.split("\n").map((s) => s.trim()).filter(Boolean);
+    if (!lines.length) return;
+    const { error } = await supabase.from("product_stock").insert(lines.map((game_data) => ({ product_id: productId, game_data })));
+    if (error) return statusDialog.error("ລົ້ມເຫຼວ", error.message);
+    setStockFor(null); setStockText("");
+    statusDialog.success("ເພີ່ມສະຕ໊ອກແລ້ວ", `+${lines.length} ຊິ້ນ`);
+  };
+
+  return (
+    <div className="space-y-3 py-3">
+      <Button onClick={() => setEditing({ is_service: false, hidden_from_home: false })}><Plus className="h-4 w-4" />ເພີ່ມສິນຄ້າ</Button>
+      {rows.map((r) => (
+        <div key={r.id} className="border rounded-lg p-3">
+          <div className="flex gap-2 items-start">
+            {r.image_url && <img src={r.image_url} className="w-14 h-14 rounded object-cover" alt="" />}
+            <div className="flex-1 text-sm">
+              <div className="font-semibold">{r.name} {r.is_service && <span className="text-xs bg-primary/20 px-1 rounded">ບໍລິການ</span>} {r.hidden_from_home && <span className="text-xs bg-muted px-1 rounded">ຊ່ອນ</span>}</div>
+              <div>{formatKip(r.price)}</div>
+            </div>
+            <div className="flex gap-1">
+              {!r.is_service && <Button size="sm" variant="outline" onClick={() => setStockFor(r.id)}><Plus className="h-4 w-4" /></Button>}
+              <Button size="sm" variant="outline" onClick={() => setEditing(r)}><Pencil className="h-4 w-4" /></Button>
+              <Button size="sm" variant="outline" onClick={() => del(r.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+            </div>
+          </div>
+          {stockFor === r.id && (
+            <div className="mt-2 space-y-2">
+              <Textarea rows={4} placeholder="ໜຶ່ງໄອດີຕໍ່ໜຶ່ງແຖວ" value={stockText} onChange={(e) => setStockText(e.target.value)} />
+              <Button size="sm" onClick={() => addStock(r.id)}>ບັນທຶກສະຕ໊ອກ</Button>
+            </div>
+          )}
+        </div>
+      ))}
+      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+        <DialogContent className="max-w-sm max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{editing?.id ? "ແກ້ໄຂ" : "ເພີ່ມ"}ສິນຄ້າ</DialogTitle></DialogHeader>
+          {editing && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2"><Switch checked={!!editing.is_service} onCheckedChange={(v) => setEditing({ ...editing, is_service: v })} /><Label>ສິນຄ້າບໍລິການ</Label></div>
+              <div><Label>ໝວດ</Label>
+                <select className="w-full border rounded-md h-9 px-2 bg-background" value={editing.category_id ?? ""} onChange={(e) => setEditing({ ...editing, category_id: e.target.value || null })}>
+                  <option value="">-</option>
+                  {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              <div><Label>ຊື່ສິນຄ້າ</Label><Input value={editing.name ?? ""} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></div>
+              <div><Label>ລາຄາ (₭)</Label><Input type="number" value={editing.price ?? ""} onChange={(e) => setEditing({ ...editing, price: Number(e.target.value) })} /></div>
+              <div><Label>ລາຄາເດີມ / ຂີດຄ້ຽນ</Label><Input type="number" value={editing.original_price ?? ""} onChange={(e) => setEditing({ ...editing, original_price: Number(e.target.value) })} /></div>
+              <div><Label>ລາຍລະອຽດ</Label><Textarea value={editing.description ?? ""} onChange={(e) => setEditing({ ...editing, description: e.target.value })} /></div>
+              <div><Label>ລິ້ງຮູບ</Label><Input value={editing.image_url ?? ""} onChange={(e) => setEditing({ ...editing, image_url: e.target.value })} /></div>
+              {editing.is_service && <div><Label>ປ້າຍຊ່ອງກອກ (ບໍລິການ)</Label><Input value={editing.service_field_label ?? ""} onChange={(e) => setEditing({ ...editing, service_field_label: e.target.value })} /></div>}
+              <div className="flex items-center gap-2"><Switch checked={!!editing.hidden_from_home} onCheckedChange={(v) => setEditing({ ...editing, hidden_from_home: v })} /><Label>ຊ່ອນຈາກໜ້າຫຼັກ (ໃຫ້ຢູ່ໃນໝວດເທົ່ານັ້ນ)</Label></div>
+              <Button className="w-full" onClick={save}>ບັນທຶກ</Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+type UserRow = { id: string; username: string; email: string; wallet_balance: number; created_at: string; banned: boolean; ban_reason: string | null };
+type Summary = {
+  profile: UserRow | null;
+  topup_count: number; topup_total: number;
+  card_count: number; card_total: number;
+  order_count: number; order_total: number;
+  service_count: number; service_total: number;
+  is_admin: boolean;
+};
+
+function AdminUsers() {
+  const [rows, setRows] = useState<UserRow[]>([]);
+  const [q, setQ] = useState("");
+  const [view, setView] = useState<UserRow | null>(null);
+  const [sum, setSum] = useState<Summary | null>(null);
+  const [newBal, setNewBal] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [banReason, setBanReason] = useState("");
+  const [askBan, setAskBan] = useState(false);
+  const load = () => supabase.from("profiles").select("*").order("created_at", { ascending: false }).then(({ data }) => setRows((data as never as UserRow[]) ?? []));
+  useEffect(() => { load(); }, []);
+
+  const open = async (r: UserRow) => {
+    setView(r); setNewBal(String(r.wallet_balance)); setNewPw(""); setBanReason(r.ban_reason ?? ""); setAskBan(false); setSum(null);
+    const { data, error } = await supabase.rpc("admin_user_summary", { _user_id: r.id });
+    if (error) return statusDialog.error("ລົ້ມເຫຼວ", error.message);
+    setSum(data as never as Summary);
+  };
+
+  const setWallet = async () => {
+    if (!view) return;
+    const { error } = await supabase.rpc("admin_set_wallet", { _user_id: view.id, _new_balance: Number(newBal) });
+    if (error) return statusDialog.error("ລົ້ມເຫຼວ", error.message);
+    statusDialog.success("ບັນທຶກຍອດເງີນແລ້ວ", ""); load(); open({ ...view, wallet_balance: Number(newBal) });
+  };
+  const changePw = async () => {
+    if (!view) return;
+    if (newPw.length < 6) return statusDialog.error("ລົ້ມເຫຼວ", "ລະຫັດຢ່າງໜ້ອຍ 6 ຕົວ");
+    try {
+      await adminSetUserPassword({ data: { userId: view.id, password: newPw } });
+      setNewPw("");
+      statusDialog.success("ສຳເລັດ", "ປ່ຽນລະຫັດຜ່ານຜູ້ໃຊ້ແລ້ວ");
+    } catch (e) { statusDialog.error("ລົ້ມເຫຼວ", (e as Error).message); }
+  };
+  const setBan = async (banned: boolean) => {
+    if (!view) return;
+    if (banned && !banReason.trim()) return statusDialog.error("ລົ້ມເຫຼວ", "ກະລຸນາໃສ່ສາເຫດການແບນ");
+    const { error } = await supabase.rpc("admin_set_ban", { _user_id: view.id, _banned: banned, _reason: banned ? banReason.trim() : undefined });
+    if (error) return statusDialog.error("ລົ້ມເຫຼວ", error.message);
+    statusDialog.success("ສຳເລັດ", banned ? "ແບນຜູ້ໃຊ້ແລ້ວ" : "ຍົກເລີກແບນແລ້ວ");
+    setAskBan(false); load(); open({ ...view, banned, ban_reason: banned ? banReason.trim() : null });
+  };
+  const del = async (id: string) => {
+    if (!confirm("ລົບບັນຊີນີ້?")) return;
+    const { error } = await supabase.from("profiles").delete().eq("id", id);
+    if (error) return statusDialog.error("ລົ້ມເຫຼວ", error.message);
+    load();
+  };
+
+  const shown = rows.filter((r) => !q.trim() || r.username.toLowerCase().includes(q.toLowerCase()) || r.email.toLowerCase().includes(q.toLowerCase()));
+
+  return (
+    <div className="space-y-2 py-3">
+      <Input placeholder="ຄົ້ນຫາຊື່ຜູ້ໃຊ້ / ອີເມວ" value={q} onChange={(e) => setQ(e.target.value)} />
+      {shown.map((r) => (
+        <div key={r.id} className="border rounded-2xl p-3 flex items-center gap-2 text-sm">
+          <div className="h-10 w-10 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center shrink-0">
+            {r.username.slice(0, 1).toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold truncate flex items-center gap-1.5">
+              {r.username}
+              {r.banned && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-destructive/15 text-destructive font-bold">ຖືກແບນ</span>}
+            </div>
+            <div className="text-xs text-muted-foreground truncate">{r.email} · {formatKip(r.wallet_balance)}</div>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => open(r)}><Eye className="h-4 w-4" /></Button>
+          <Button size="sm" variant="outline" onClick={() => del(r.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+        </div>
+      ))}
+
+      <Dialog open={!!view} onOpenChange={(o) => !o && setView(null)}>
+        <DialogContent className="max-w-sm max-h-[85vh] overflow-y-auto rounded-3xl">
+          <DialogHeader><DialogTitle>ຂໍ້ມູນລູກຄ້າ</DialogTitle></DialogHeader>
+          {view && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="h-16 w-16 rounded-full bg-primary/10 text-primary text-2xl font-extrabold flex items-center justify-center">
+                  {view.username.slice(0, 1).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <div className="font-extrabold truncate">{view.username}</div>
+                  <div className="text-xs text-muted-foreground break-all">{view.email}</div>
+                  {sum?.is_admin && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary font-bold">ແອັດມິນ</span>}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <Box label="ຍອດເງີນກະເປົ໋າ" value={formatKip(view.wallet_balance)} />
+                <Box label="ສະໝັກເມື່ອ" value={new Date(view.created_at).toLocaleDateString()} />
+                <Box label="ເຕີມເງີນ" value={`${sum?.topup_count ?? 0} ຄັ້ງ · ${formatKip(sum?.topup_total ?? 0)}`} />
+                <Box label="ບັດເຕີມເງີນ" value={`${sum?.card_count ?? 0} ໃບ · ${formatKip(sum?.card_total ?? 0)}`} />
+                <Box label="ຊື້ສິນຄ້າ" value={`${sum?.order_count ?? 0} ອໍເດີ · ${formatKip(sum?.order_total ?? 0)}`} />
+                <Box label="ອໍເດີບໍລິການ" value={`${sum?.service_count ?? 0} ອໍເດີ · ${formatKip(sum?.service_total ?? 0)}`} />
+              </div>
+
+              <div><Label>ລະຫັດຜ່ານ</Label><Input value="ບໍ່ສາມາດເບິ່ງໄດ້" disabled /></div>
+              <div className="space-y-2">
+                <Label>ຕັ້ງລະຫັດຜ່ານໃໝ່</Label>
+                <Input type="password" placeholder="ຢ່າງໜ້ອຍ 6 ຕົວ" value={newPw} onChange={(e) => setNewPw(e.target.value)} />
+                <Button size="sm" variant="outline" className="w-full" onClick={changePw}>ປ່ຽນລະຫັດຜ່ານ</Button>
+              </div>
+
+              <div className="space-y-2">
+                <Label>ຍອດເງີນ (₭)</Label>
+                <Input type="number" value={newBal} onChange={(e) => setNewBal(e.target.value)} />
+                <Button size="sm" className="w-full" onClick={setWallet}>ບັນທຶກຍອດເງີນ</Button>
+              </div>
+
+              {view.banned ? (
+                <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-3 space-y-2">
+                  <div className="text-sm font-bold text-destructive">ຜູ້ໃຊ້ນີ້ຖືກແບນ</div>
+                  <div className="text-xs">ສາເຫດ: {view.ban_reason || "-"}</div>
+                  <Button size="sm" variant="outline" className="w-full" onClick={() => setBan(false)}>ຍົກເລີກແບນ</Button>
+                </div>
+              ) : askBan ? (
+                <div className="rounded-2xl border border-destructive/30 p-3 space-y-2">
+                  <Label>ສາເຫດການແບນ</Label>
+                  <Textarea rows={2} value={banReason} onChange={(e) => setBanReason(e.target.value)} placeholder="ເຊັ່ນ ໂກງ / ໃຊ້ສະລິບປອມ" />
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="destructive" className="flex-1" onClick={() => setBan(true)}>ຢືນຢັນແບນ</Button>
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => setAskBan(false)}>ຍົກເລີກ</Button>
+                  </div>
+                </div>
+              ) : (
+                <Button variant="destructive" className="w-full" onClick={() => setAskBan(true)}><Ban className="h-4 w-4" />ແບນຜູ້ໃຊ້ນີ້</Button>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+function Box({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-xl border p-2"><div className="text-[11px] text-muted-foreground">{label}</div><div className="font-bold text-xs">{value}</div></div>;
+}
+
+function AdminSpin() {
+  type Prize = { id: string; label: string; amount: number; weight: number; sort: number };
+  type Hist = { id: string; user_id: string; prize_label: string; amount: number; cost: number; created_at: string };
+  const [enabled, setEnabled] = useState(false);
+  const [cost, setCost] = useState("5000");
+  const [prizes, setPrizes] = useState<Prize[]>([]);
+  const [form, setForm] = useState({ label: "", amount: "", weight: "1" });
+  const [hist, setHist] = useState<Hist[]>([]);
+  const [profiles, setProfiles] = useState<Record<string, { username: string; email: string }>>({});
+
+  const load = async () => {
+    const [{ data: s }, { data: p }, { data: h }] = await Promise.all([
+      supabase.from("site_settings").select("spin_enabled,spin_cost").eq("id", 1).maybeSingle(),
+      supabase.from("spin_prizes").select("*").order("sort"),
+      supabase.from("spin_history").select("*").order("created_at", { ascending: false }).limit(30),
+    ]);
+    const st = s as { spin_enabled: boolean; spin_cost: number } | null;
+    setEnabled(!!st?.spin_enabled); setCost(String(st?.spin_cost ?? 5000));
+    setPrizes((p as never as Prize[]) ?? []);
+    const list = (h as never as Hist[]) ?? [];
+    setHist(list);
+    setProfiles(await loadProfiles(list.map((r) => r.user_id)));
+  };
+  useEffect(() => { load(); }, []);
+
+  const saveConfig = async (nextEnabled?: boolean) => {
+    const { error } = await supabase.from("site_settings").update({
+      spin_enabled: nextEnabled ?? enabled, spin_cost: Number(cost) || 0,
+    }).eq("id", 1);
+    if (error) return statusDialog.error("ລົ້ມເຫຼວ", error.message);
+    if (nextEnabled !== undefined) setEnabled(nextEnabled);
+    statusDialog.success("ບັນທຶກແລ້ວ", "");
+  };
+  const addPrize = async () => {
+    if (!form.label.trim()) return;
+    const { error } = await supabase.from("spin_prizes").insert({
+      label: form.label.trim(), amount: Number(form.amount) || 0,
+      weight: Math.max(1, Number(form.weight) || 1), sort: prizes.length,
+    });
+    if (error) return statusDialog.error("ລົ້ມເຫຼວ", error.message);
+    setForm({ label: "", amount: "", weight: "1" }); load();
+  };
+  const delPrize = async (id: string) => { await supabase.from("spin_prizes").delete().eq("id", id); load(); };
+
+  const totalWeight = prizes.reduce((a, b) => a + b.weight, 0) || 1;
+
+  return (
+    <div className="space-y-3 py-3">
+      <div className="border rounded-2xl p-3 space-y-2">
+        <div className="flex items-center gap-2">
+          <Switch checked={enabled} onCheckedChange={(v) => saveConfig(v)} />
+          <Label>ເປີດມິນິເກມວົງລໍ້ໃນໜ້າຫຼັກ</Label>
+        </div>
+        <Label>ຄ່າໝຸນຕໍ່ຄັ້ງ (₭)</Label>
+        <Input type="number" value={cost} onChange={(e) => setCost(e.target.value)} />
+        <Button size="sm" onClick={() => saveConfig()}>ບັນທຶກ</Button>
+      </div>
+
+      <div className="border rounded-2xl p-3 space-y-2">
+        <div className="font-semibold text-sm">ລາງວັນ</div>
+        {prizes.map((p) => (
+          <div key={p.id} className="flex items-center gap-2 text-sm border rounded-xl p-2">
+            <div className="flex-1 truncate">{p.label}</div>
+            <div className="font-semibold">{formatKip(p.amount)}</div>
+            <div className="text-xs text-muted-foreground">{Math.round((p.weight / totalWeight) * 100)}%</div>
+            <Button size="sm" variant="ghost" onClick={() => delPrize(p.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+          </div>
+        ))}
+        <Input placeholder="ຊື່ລາງວັນ ເຊັ່ນ 10,000₭ ຫຼື ບໍ່ໄດ້ຫຍັງ" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} />
+        <Input type="number" placeholder="ຈຳນວນເງີນທີ່ໄດ້ (₭)" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
+        <Input type="number" placeholder="ນ້ຳໜັກໂອກາດ (ຫຼາຍ = ອອກງ່າຍ)" value={form.weight} onChange={(e) => setForm({ ...form, weight: e.target.value })} />
+        <Button size="sm" onClick={addPrize}><Plus className="h-4 w-4" />ເພີ່ມລາງວັນ</Button>
+      </div>
+
+      <div className="border rounded-2xl p-3 space-y-2">
+        <div className="font-semibold text-sm">ປະຫວັດການໝຸນ</div>
+        {hist.length === 0 && <div className="text-xs text-muted-foreground">ຍັງບໍ່ມີ</div>}
+        {hist.map((h) => (
+          <div key={h.id} className="text-xs border rounded-xl p-2 flex items-center gap-2">
+            <div className="flex-1 truncate">{profiles[h.user_id]?.username ?? "-"} · {h.prize_label}</div>
+            <div className="font-semibold">+{formatKip(h.amount)}</div>
+            <div className="text-muted-foreground">{new Date(h.created_at).toLocaleString()}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AdminSettings() {
+  const [s, setS] = useState<Record<string, string>>({});
+  const [ad, setAd] = useState({ image_url: "", link: "" });
+  const [codeForm, setCodeForm] = useState({ code: "", amount: "" });
+  useEffect(() => {
+    supabase.from("site_settings").select("*").eq("id", 1).maybeSingle().then(({ data }) => {
+      if (data) setS(Object.fromEntries(Object.entries(data).map(([k, v]) => [k, v == null ? "" : String(v)])));
+    });
+  }, []);
+  const save = async () => {
+    const { error } = await supabase.from("site_settings").upsert({
+      id: 1, site_name: s.site_name, logo_url: s.logo_url || null, slide_url: s.slide_url || null,
+      announcement: s.announcement, qr_url: s.qr_url || null, help_link: s.help_link || null,
+      primary_color: s.primary_color || null, discord_webhook: s.discord_webhook || null,
+      qr_enabled: s.qr_enabled !== "false", card_enabled: s.card_enabled !== "false",
+      qr_account_name: s.qr_account_name || "",
+    });
+    if (error) return statusDialog.error("ລົ້ມເຫຼວ", error.message);
+    statusDialog.success("ບັນທຶກແລ້ວ", "");
+  };
+  /** Save the chosen color right away so every open page re-themes live. */
+  const applyColor = async (hex: string) => {
+    setS((prev) => ({ ...prev, primary_color: hex }));
+    const { error } = await supabase.from("site_settings").update({ primary_color: hex }).eq("id", 1);
+    if (error) return statusDialog.error("ລົ້ມເຫຼວ", error.message);
+  };
+
+  const addAd = async () => {
+    if (!ad.image_url) return;
+    await supabase.from("ads").update({ active: false }).eq("active", true);
+    const { error } = await supabase.from("ads").insert({ image_url: ad.image_url, link: ad.link || null, active: true });
+    if (error) return statusDialog.error("ລົ້ມເຫຼວ", error.message);
+    statusDialog.success("ບັນທຶກໂຄສະນາ", ""); setAd({ image_url: "", link: "" });
+  };
+  const addCode = async () => {
+    if (!codeForm.code || !codeForm.amount) return;
+    const { error } = await supabase.from("redeem_codes").insert({ code: codeForm.code, amount: Number(codeForm.amount) });
+    if (error) return statusDialog.error("ລົ້ມເຫຼວ", error.message);
+    statusDialog.success("ສ້າງໂຄດແລ້ວ", ""); setCodeForm({ code: "", amount: "" });
+  };
+
+  return (
+    <div className="space-y-4 py-3 relative">
+      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b pb-2 pt-1 flex items-center justify-between">
+        <div className="font-bold text-sm">ຕັ້ງຄ່າເວັບ</div>
+        <Button size="sm" onClick={save}>ບັນທຶກຕັ້ງຄ່າ</Button>
+      </div>
+      <Section title="ຊື່ເວັບ / ໂລໂກ້ / ສະໄລ້">
+        <Input placeholder="ຊື່ເວັບ" value={s.site_name ?? ""} onChange={(e) => setS({ ...s, site_name: e.target.value })} />
+        <Input placeholder="ລິ້ງໂລໂກ້" value={s.logo_url ?? ""} onChange={(e) => setS({ ...s, logo_url: e.target.value })} />
+        <Input placeholder="ລິ້ງຮູບສະໄລ້" value={s.slide_url ?? ""} onChange={(e) => setS({ ...s, slide_url: e.target.value })} />
+      </Section>
+      <Section title="ຊ່ອງປະກາດ">
+        <Textarea placeholder="ຂໍ້ຄວາມປະກາດ" value={s.announcement ?? ""} onChange={(e) => setS({ ...s, announcement: e.target.value })} />
+      </Section>
+      <Section title="ຊ່ອງທາງເຕີມເງີນ (ເປີດ/ປິດ)">
+        <div className="flex items-center gap-2">
+          <Switch checked={s.qr_enabled !== "false"} onCheckedChange={(v) => setS({ ...s, qr_enabled: String(v) })} />
+          <Label>ເປີດຊ່ອງທາງ QR Code</Label>
+        </div>
+        <div className="flex items-center gap-2">
+          <Switch checked={s.card_enabled !== "false"} onCheckedChange={(v) => setS({ ...s, card_enabled: String(v) })} />
+          <Label>ເປີດຊ່ອງທາງບັດເຕີມເງີນ</Label>
+        </div>
+      </Section>
+      <Section title="QR Code ເຕີມເງີນ">
+        <Input placeholder="ລິ້ງຮູບ QR" value={s.qr_url ?? ""} onChange={(e) => setS({ ...s, qr_url: e.target.value })} />
+      </Section>
+      <Section title="ຊື່ບັນຊີຜູ້ຮັບ (ໃຊ້ກວດສອບສະລິບ)">
+        <Input placeholder="ຊື່ບັນຊີ ເຊັ່ນ SOMYONE KHAMKHEUNG" value={s.qr_account_name ?? ""} onChange={(e) => setS({ ...s, qr_account_name: e.target.value })} />
+      </Section>
+      <Section title="ຊ່ວຍເຫຼືອ / ຕິດຕໍ່ແອັດມິນ"><Input placeholder="ລິ້ງ (ເຊັ່ນ Telegram, Line)" value={s.help_link ?? ""} onChange={(e) => setS({ ...s, help_link: e.target.value })} /></Section>
+      <Section title="ສີເວັບ (ປ່ຽນທັນທີທັງເວັບ)">
+        <div className="grid grid-cols-3 gap-2">
+          {THEME_PRESETS.map((p) => (
+            <button
+              key={p.hex}
+              onClick={() => applyColor(p.hex)}
+              className={`h-11 rounded-xl border-2 flex items-center gap-2 px-2 text-xs font-bold ${s.primary_color === p.hex ? "border-primary" : "border-border"}`}
+            >
+              <span className="h-6 w-6 rounded-lg border" style={{ background: p.hex }} />
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <input type="color" className="h-10 w-14 rounded-lg border bg-background" value={/^#[0-9a-fA-F]{6}$/.test(s.primary_color ?? "") ? s.primary_color : "#3b6cf6"} onChange={(e) => applyColor(e.target.value)} />
+          <Input placeholder="#7c3aed" value={s.primary_color ?? ""} onChange={(e) => setS({ ...s, primary_color: e.target.value })} />
+        </div>
+      </Section>
+
+      <Section title="Discord Webhook"><Input placeholder="https://discord.com/api/webhooks/..." value={s.discord_webhook ?? ""} onChange={(e) => setS({ ...s, discord_webhook: e.target.value })} /></Section>
+      <div className="sticky bottom-0 z-10 bg-background/95 backdrop-blur border-t py-3">
+        <Button className="w-full" onClick={save}>ບັນທຶກຕັ້ງຄ່າ</Button>
+      </div>
+
+
+      <Section title="ໂຄສະນາ (Popup)">
+        <Input placeholder="ລິ້ງຮູບໂຄສະນາ" value={ad.image_url} onChange={(e) => setAd({ ...ad, image_url: e.target.value })} />
+        <Input placeholder="ລິ້ງເມື່ອກົດ (ບໍ່ບັງຄັບ)" value={ad.link} onChange={(e) => setAd({ ...ad, link: e.target.value })} />
+        <Button size="sm" onClick={addAd}>ຕັ້ງໂຄສະນາໃໝ່</Button>
+      </Section>
+      <Section title="ໂຄດເຕີມເງີນ">
+        <Input placeholder="ໂຄດ" value={codeForm.code} onChange={(e) => setCodeForm({ ...codeForm, code: e.target.value })} />
+        <Input placeholder="ຈຳນວນ (₭)" type="number" value={codeForm.amount} onChange={(e) => setCodeForm({ ...codeForm, amount: e.target.value })} />
+        <Button size="sm" onClick={addCode}>ສ້າງໂຄດ</Button>
+      </Section>
+    </div>
+  );
+}
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return <div className="border rounded-lg p-3 space-y-2"><div className="font-semibold text-sm">{title}</div>{children}</div>;
+}
