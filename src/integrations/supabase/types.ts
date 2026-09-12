@@ -742,6 +742,7 @@ export type Database = {
         Returns: boolean
       }
       create_payment_intent: { Args: { _amount: number }; Returns: Json }
+      email_for_username: { Args: { _username: string }; Returns: string }
       expire_payment_intents: { Args: never; Returns: undefined }
       has_role: {
         Args: {
