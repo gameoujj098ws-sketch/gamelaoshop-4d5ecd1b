@@ -11,9 +11,9 @@ import { ArrowLeft, Wallet, Clock, Check, Upload } from "lucide-react";
 import { verifySlip } from "@/lib/verify-slip.functions";
 import { AppShell } from "@/components/app/AppShell";
 import { notify } from "@/lib/notify";
-import cardIcon from "@/assets/topup-card.png.asset.json";
-import codeIcon from "@/assets/topup-code.png.asset.json";
-import qrIcon from "@/assets/topup-qr.png.asset.json";
+import cardIcon from "@/assets/topup-card.png";
+import codeIcon from "@/assets/topup-code.png";
+import qrIcon from "@/assets/topup-qr.png";
 
 
 const QR_SESSION_KEY = "qr_topup_session_v1";
@@ -282,9 +282,9 @@ function TopupPage() {
               <div className="text-3xl font-extrabold mt-1">{formatKip(profile?.wallet_balance ?? 0)}</div>
             </div>
             <div className="text-sm font-semibold text-muted-foreground">ເລືອກຊ່ອງທາງເຕີມເງີນ</div>
-            {cardOn && <MethodCard iconUrl={cardIcon.url} title="ບັດເຕີມເງີນ" subtitle="ໜຶ່ງໃບ 10,000₭ • ຮັບ 6,000₭" badge="ຄ່າທຳນຽມ 40%" onClick={() => setMethod("card")} />}
-            <MethodCard iconUrl={codeIcon.url} title="ໃຊ້ໂຄດເຕີມເງີນ" subtitle="ເງີນເຂົ້າກະເປົ໋າທັນທີ" badge="ທັນທີ" onClick={() => setMethod("code")} />
-            {qrOn && <MethodCard iconUrl={qrIcon.url} title="ໂອນຜ່ານ QR Code" subtitle="ແນບສະລິບ ກວດສອບອັດຕະໂນມັດ" badge="Auto" onClick={() => setMethod("qr-amount")} />}
+            {cardOn && <MethodCard iconUrl={cardIcon} title="ບັດເຕີມເງີນ" subtitle="ໜຶ່ງໃບ 10,000₭ • ຮັບ 6,000₭" badge="ຄ່າທຳນຽມ 40%" onClick={() => setMethod("card")} />}
+            <MethodCard iconUrl={codeIcon} title="ໃຊ້ໂຄດເຕີມເງີນ" subtitle="ເງີນເຂົ້າກະເປົ໋າທັນທີ" badge="ທັນທີ" onClick={() => setMethod("code")} />
+            {qrOn && <MethodCard iconUrl={qrIcon} title="ໂອນຜ່ານ QR Code" subtitle="ແນບສະລິບ ກວດສອບອັດຕະໂນມັດ" badge="Auto" onClick={() => setMethod("qr-amount")} />}
 
           </>
         )}
