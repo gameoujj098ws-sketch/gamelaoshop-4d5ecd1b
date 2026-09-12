@@ -1,1 +1,0 @@
-ALTER TABLE public.site_settings ADD COLUMN IF NOT EXISTS qr_account_name text NOT NULL DEFAULT 'SOMYONE KHAMKHEUNG';
