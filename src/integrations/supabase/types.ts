@@ -411,12 +411,37 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_set_wallet: {
+        Args: { _new_balance: number; _user_id: string }
+        Returns: undefined
+      }
+      admin_stats: { Args: never; Returns: Json }
+      approve_topup: { Args: { _topup_id: string }; Returns: undefined }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
         Returns: boolean
+      }
+      purchase_product: { Args: { _product_id: string }; Returns: Json }
+      purchase_service: {
+        Args: { _note: string; _product_id: string }
+        Returns: Json
+      }
+      redeem_code: { Args: { _code: string }; Returns: Json }
+      reject_topup: { Args: { _topup_id: string }; Returns: undefined }
+      resolve_service_order: {
+        Args: { _order_id: string; _success: boolean }
+        Returns: undefined
+      }
+      top_spenders: {
+        Args: never
+        Returns: {
+          times: number
+          total: number
+          username: string
+        }[]
       }
     }
     Enums: {
