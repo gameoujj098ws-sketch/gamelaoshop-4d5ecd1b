@@ -18,9 +18,9 @@ export function AuthDialog({ open, onOpenChange }: { open: boolean; onOpenChange
     try {
       let email = login.id.trim();
       if (!email.includes("@")) {
-        const { data } = await supabase.from("profiles").select("email").eq("username", email).maybeSingle();
+        const { data } = await supabase.rpc("email_for_username", { _username: email });
         if (!data) throw new Error("ບໍ່ພົບບັນຊີນີ້");
-        email = data.email;
+        email = data as string;
       }
       const { error } = await supabase.auth.signInWithPassword({ email, password: login.password });
       if (error) throw error;
@@ -92,9 +92,9 @@ export function AuthDialog({ open, onOpenChange }: { open: boolean; onOpenChange
                 if (!id) return statusDialog.error("ລົ້ມເຫຼວ", "ກະລຸນາໃສ່ອີເມວກ່ອນ");
                 let email = id;
                 if (!email.includes("@")) {
-                  const { data } = await supabase.from("profiles").select("email").eq("username", email).maybeSingle();
+                  const { data } = await supabase.rpc("email_for_username", { _username: email });
                   if (!data) return statusDialog.error("ລົ້ມເຫຼວ", "ບໍ່ພົບບັນຊີ");
-                  email = data.email;
+                  email = data as string;
                 }
                 const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
                 if (error) statusDialog.error("ລົ້ມເຫຼວ", error.message);

@@ -12,7 +12,7 @@ type Extracted = {
 };
 type VerifyResult = { ok: boolean; reason?: string; extracted?: Extracted };
 
-const DEFAULT_NAME = "SOMYONE KHAMKHEUNG";
+const DEFAULT_NAME = "SOMYONE KHAMKHEUNG MR";
 /** Honorifics / titles that appear before or after names on Lao & Thai slips. */
 const HONORIFICS = new Set(["MR", "MRS", "MS", "MISS", "MSTR", "DR", "NAI", "NANG", "MR.", "THAO"]);
 
@@ -136,7 +136,7 @@ export const verifySlip = createServerFn({ method: "POST" })
 
     // 3. Transfer time must fall inside the QR session window
     const started = typeof data.qrStartedAt === "number" && data.qrStartedAt > 0 ? data.qrStartedAt : Date.now();
-    const WINDOW_MS = 5 * 60 * 1000;
+    const WINDOW_MS = 15 * 60 * 1000;
     const CLOCK_SKEW_MS = 90 * 1000; // slip clocks are rarely exact
     const windowFrom = started - CLOCK_SKEW_MS;
     const windowTo = started + WINDOW_MS + CLOCK_SKEW_MS;
@@ -150,7 +150,7 @@ export const verifySlip = createServerFn({ method: "POST" })
     if (d.getTime() < windowFrom || d.getTime() > windowTo) {
       return {
         ok: false,
-        reason: `วันที่-เวลาบนสลิป (${fmt(d.getTime())}) ไม่ตรงกับเวลาที่สร้าง QR (${fmt(started)}) ต้องโอนภายใน 5 นาทีหลังสร้าง QR`,
+        reason: `วันที่-เวลาบนสลิป (${fmt(d.getTime())}) ไม่ตรงกับเวลาที่สร้าง QR (${fmt(started)}) ต้องโอนภายใน 15 นาทีหลังสร้าง QR`,
         extracted,
       };
     }

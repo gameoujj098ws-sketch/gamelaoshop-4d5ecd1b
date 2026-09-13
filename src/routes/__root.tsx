@@ -14,6 +14,7 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { ResetPasswordDialog } from "@/components/app/ResetPasswordDialog";
 import { Snow } from "@/components/app/Snow";
 import { BanGate } from "@/components/app/BanGate";
+import { BotGate } from "@/components/app/BotGate";
 
 function NotFoundComponent() {
   return (
@@ -123,11 +124,13 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      <Snow />
-      <Outlet />
-      <ResetPasswordDialog />
-      <BanGate />
+      <BotGate>
+        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+        <Snow />
+        <Outlet />
+        <ResetPasswordDialog />
+        <BanGate />
+      </BotGate>
     </QueryClientProvider>
   );
 }

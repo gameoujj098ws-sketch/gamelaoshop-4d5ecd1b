@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { statusDialog, StatusDialog } from "@/components/app/StatusDialog";
 import { notify } from "@/lib/notify";
+import { HumanCheck } from "@/components/app/HumanCheck";
 import { LogIn, UserPlus, ArrowLeft } from "lucide-react";
 
 export const Route = createFileRoute("/auth")({
@@ -91,17 +92,20 @@ function LoginForm() {
   const navigate = useNavigate();
   const [id, setId] = useState("");
   const [pw, setPw] = useState("");
+  const [human, setHuman] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const submit = async () => {
+    if (!human) return statusDialog.error("ລົ້ມເຫຼວ", "ກະລຸນາຢືນຢັນວ່າທ່ານບໍ່ແມ່ນບອດ");
     setLoading(true);
     try {
       let email = id.trim();
       if (!email) throw new Error("ກະລຸນາໃສ່ຂໍ້ມູນ");
       if (!email.includes("@")) {
-        const { data } = await supabase.from("profiles").select("email").eq("username", email).maybeSingle();
+        const { data, error } = await supabase.rpc("email_for_username", { _username: email });
+        if (error) throw error;
         if (!data) throw new Error("ບໍ່ພົບບັນຊີນີ້");
-        email = data.email;
+        email = data as string;
       }
       const { error } = await supabase.auth.signInWithPassword({ email, password: pw });
       if (error) throw error;
@@ -133,6 +137,7 @@ function LoginForm() {
       <Button className="w-full h-12 rounded-2xl bg-gradient-to-b from-primary to-primary/80 text-lg font-bold" disabled={loading} onClick={submit}>
         <LogIn className="h-5 w-5" /> ເຂົ້າສູ່ລະບົບ
       </Button>
+      <HumanCheck verified={human} onVerified={setHuman} />
       <button type="button" onClick={forgot} className="text-sm text-primary underline w-full text-center">ລືມລະຫັດຜ່ານ?</button>
     </div>
   );
@@ -140,9 +145,11 @@ function LoginForm() {
 
 function RegisterForm({ onDone }: { onDone: () => void }) {
   const [f, setF] = useState({ username: "", email: "", pw: "", confirm: "" });
+  const [human, setHuman] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const submit = async () => {
+    if (!human) return statusDialog.error("ລົ້ມເຫຼວ", "ກະລຸນາຢືນຢັນວ່າທ່ານບໍ່ແມ່ນບອດ");
     if (f.pw !== f.confirm) return statusDialog.error("ລົ້ມເຫຼວ", "ລະຫັດຢືນຢັນບໍ່ຕົງກັນ");
     if (f.username.length < 3) return statusDialog.error("ລົ້ມເຫຼວ", "ຊື່ຜູ້ໃຊ້ຢ່າງໜ້ອຍ 3 ຕົວ");
     setLoading(true);
@@ -182,6 +189,7 @@ function RegisterForm({ onDone }: { onDone: () => void }) {
       <Button className="w-full h-12 rounded-2xl bg-gradient-to-b from-primary to-primary/80 text-lg font-bold" disabled={loading} onClick={submit}>
         <UserPlus className="h-5 w-5" /> ສະໝັກສະມາຊິກ
       </Button>
+      <HumanCheck verified={human} onVerified={setHuman} />
     </div>
   );
 }
