@@ -150,7 +150,7 @@ export const verifySlip = createServerFn({ method: "POST" })
     if (d.getTime() < windowFrom || d.getTime() > windowTo) {
       return {
         ok: false,
-        reason: `วันที่-เวลาบนสลิป (${fmt(d.getTime())}) ไม่ตรงกับเวลาที่สร้าง QR (${fmt(started)}) ต้องโอนภายใน 5 นาทีหลังสร้าง QR`,
+        reason: `วันที่-เวลาบนสลิป (${fmt(d.getTime())}) ไม่ตรงกับเวลาที่สร้าง QR (${fmt(started)}) ต้องโอนภายใน 15 นาทีหลังสร้าง QR`,
         extracted,
       };
     }

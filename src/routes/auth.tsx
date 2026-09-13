@@ -91,17 +91,20 @@ function LoginForm() {
   const navigate = useNavigate();
   const [id, setId] = useState("");
   const [pw, setPw] = useState("");
+  const [human, setHuman] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const submit = async () => {
+    if (!human) return statusDialog.error("ລົ້ມເຫຼວ", "ກະລຸນາຢືນຢັນວ່າທ່ານບໍ່ແມ່ນບອດ");
     setLoading(true);
     try {
       let email = id.trim();
       if (!email) throw new Error("ກະລຸນາໃສ່ຂໍ້ມູນ");
       if (!email.includes("@")) {
-        const { data } = await supabase.from("profiles").select("email").eq("username", email).maybeSingle();
+        const { data, error } = await supabase.rpc("email_for_username", { _username: email });
+        if (error) throw error;
         if (!data) throw new Error("ບໍ່ພົບບັນຊີນີ້");
-        email = data.email;
+        email = data as string;
       }
       const { error } = await supabase.auth.signInWithPassword({ email, password: pw });
       if (error) throw error;
