@@ -1,12 +1,13 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { ShieldCheck } from "lucide-react";
+import { Recaptcha } from "./Recaptcha";
 
 const KEY = "human_gate_v1";
 const TTL_MS = 30 * 60 * 1000;
 
 /**
- * Security interstitial shown before the site loads: verifies the visitor
- * is not a bot, then remembers the result for a short while.
+ * Security interstitial shown before the site loads: the visitor must pass a
+ * real Google reCAPTCHA, then the result is remembered for a short while.
  */
 export function BotGate({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
@@ -22,16 +23,16 @@ export function BotGate({ children }: { children: ReactNode }) {
     }
     setPassed(ok);
     setReady(true);
-    if (ok) return;
-    const t = window.setTimeout(() => {
-      try {
-        localStorage.setItem(KEY, String(Date.now()));
-      } catch {
-        /* ignore */
-      }
-      setPassed(true);
-    }, 2200);
-    return () => window.clearTimeout(t);
+  }, []);
+
+  const pass = useCallback((ok: boolean) => {
+    if (!ok) return;
+    try {
+      localStorage.setItem(KEY, String(Date.now()));
+    } catch {
+      /* ignore */
+    }
+    setPassed(true);
   }, []);
 
   if (!ready) return null;
@@ -43,12 +44,13 @@ export function BotGate({ children }: { children: ReactNode }) {
         <h1 className="text-4xl font-extrabold tracking-tight">ກຳລັງກວດສອບຄວາມປອດໄພ</h1>
         <p className="mt-5 text-base leading-relaxed text-white/80">
           ເວັບໄຊນີ້ໃຊ້ບໍລິການຮັກສາຄວາມປອດໄພເພື່ອປ້ອງກັນບອດອັນຕະລາຍ
-          ໜ້ານີ້ຈະປາກົດຂຶ້ນໃນຂະນະທີ່ລະບົບກວດສອບວ່າທ່ານບໍ່ແມ່ນບອດ
+          ກະລຸນາຢືນຢັນວ່າທ່ານບໍ່ແມ່ນບອດເພື່ອເຂົ້າສູ່ເວັບໄຊ
         </p>
         <div className="mt-8 rounded-lg bg-white/10 border border-white/15 p-5 flex items-center gap-4">
-          <span className="h-6 w-6 rounded-full border-2 border-white/30 border-t-transparent animate-spin" />
-          <span className="text-sm flex-1">ກຳລັງກວດສອບ...</span>
-          <ShieldCheck className="h-6 w-6 text-white/70" />
+          <div className="flex-1">
+            <Recaptcha onVerified={pass} theme="dark" />
+          </div>
+          <ShieldCheck className="h-6 w-6 text-white/70 shrink-0" />
         </div>
       </div>
     </div>
