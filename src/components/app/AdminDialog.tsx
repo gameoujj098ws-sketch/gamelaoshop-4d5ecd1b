@@ -11,7 +11,7 @@ import { statusDialog } from "./StatusDialog";
 import { formatKip } from "@/lib/format";
 import { Eye, Plus, Pencil, Trash2, Check, X, Send, Ban } from "lucide-react";
 import { THEME_PRESETS } from "@/lib/theme";
-import { adminSetUserPassword } from "@/lib/admin.functions";
+import { adminSetUserPassword, adminDeleteUser } from "@/lib/admin.functions";
 
 
 type Category = { id: string; name: string; image_url: string | null; sort: number };
@@ -692,10 +692,16 @@ function AdminUsers() {
     setAskBan(false); load(); open({ ...view, banned, ban_reason: banned ? banReason.trim() : null });
   };
   const del = async (id: string) => {
-    if (!confirm("ລົບບັນຊີນີ້?")) return;
-    const { error } = await supabase.from("profiles").delete().eq("id", id);
-    if (error) return statusDialog.error("ລົ້ມເຫຼວ", error.message);
-    load();
+    const ok = await statusDialog.confirm("ລົບບັນຊີນີ້?", "ຂໍ້ມູນຜູ້ໃຊ້ຈະຖືກລົບຖາວອນ");
+    if (!ok) return;
+    try {
+      await adminDeleteUser({ data: { userId: id } });
+      setView(null);
+      statusDialog.success("ສຳເລັດ", "ລົບບັນຊີແລ້ວ");
+      load();
+    } catch (e) {
+      statusDialog.error("ລົ້ມເຫຼວ", (e as Error).message);
+    }
   };
 
   const shown = rows.filter((r) => !q.trim() || r.username.toLowerCase().includes(q.toLowerCase()) || r.email.toLowerCase().includes(q.toLowerCase()));
