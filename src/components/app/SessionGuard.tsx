@@ -41,7 +41,7 @@ export function SessionGuard() {
     };
 
     check();
-    const events: Array<keyof WindowEventMap> = ["click", "keydown", "visibilitychange"];
+    const events = ["click", "keydown", "focus"] as const;
     events.forEach((e) => window.addEventListener(e, touch));
     const timer = window.setInterval(check, 5 * 60 * 1000);
     return () => {
