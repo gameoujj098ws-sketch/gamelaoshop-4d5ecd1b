@@ -45,11 +45,10 @@ export function StatusDialog() {
   const loading = kind === "loading";
   const confirming = kind === "confirm";
 
-  const ring =
-    kind === "success" ? "border-[color:var(--color-success)]/35 text-[color:var(--color-success)]"
-      : kind === "error" ? "border-destructive/35 text-destructive"
-      : kind === "confirm" ? "border-primary/35 text-primary"
-      : "border-primary/25 text-primary";
+  const tone =
+    kind === "success" ? "text-[color:var(--color-success)]"
+      : kind === "error" ? "text-destructive"
+      : "text-primary";
 
   const accept = () => {
     state.resolve?.(true);
