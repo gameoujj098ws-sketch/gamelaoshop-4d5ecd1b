@@ -1,6 +1,6 @@
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Check, X, AlertTriangle, HelpCircle, Loader2 } from "lucide-react";
+import { AlertTriangle, HelpCircle, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 type Kind = "success" | "error" | "loading" | "confirm";
@@ -45,11 +45,10 @@ export function StatusDialog() {
   const loading = kind === "loading";
   const confirming = kind === "confirm";
 
-  const ring =
-    kind === "success" ? "border-[color:var(--color-success)]/35 text-[color:var(--color-success)]"
-      : kind === "error" ? "border-destructive/35 text-destructive"
-      : kind === "confirm" ? "border-primary/35 text-primary"
-      : "border-primary/25 text-primary";
+  const tone =
+    kind === "success" ? "text-[color:var(--color-success)]"
+      : kind === "error" ? "text-destructive"
+      : "text-primary";
 
   const accept = () => {
     state.resolve?.(true);
@@ -64,14 +63,40 @@ export function StatusDialog() {
         className="max-w-[320px] rounded-[28px] border-0 p-6 text-center shadow-2xl [&>button]:hidden"
       >
         <div className="flex flex-col items-center gap-4">
-          <div className={`h-[86px] w-[86px] rounded-full border-[5px] flex items-center justify-center ${ring}`}>
-            {loading ? <Loader2 className="h-11 w-11 animate-spin" strokeWidth={2.5} />
-              : kind === "success" ? <Check className="h-12 w-12" strokeWidth={3} />
-              : kind === "error" ? <X className="h-12 w-12" strokeWidth={3} />
-              : <HelpCircle className="h-12 w-12" strokeWidth={2.5} />}
-          </div>
+          {loading || confirming ? (
+            <div className={`status-pop h-[86px] w-[86px] rounded-full border-[5px] flex items-center justify-center ${tone} ${loading ? "border-primary/25" : "border-primary/35"}`}>
+              {loading ? <Loader2 className="h-11 w-11 animate-spin" strokeWidth={2.5} /> : <HelpCircle className="h-12 w-12" strokeWidth={2.5} />}
+            </div>
+          ) : (
+            <svg
+              key={`${kind}-${title}-${detail}`}
+              viewBox="0 0 66 66"
+              className={`status-pop h-[86px] w-[86px] ${tone}`}
+              fill="none"
+              aria-hidden="true"
+            >
+              <circle
+                className="status-circle"
+                cx="33" cy="33" r="26"
+                stroke="currentColor" strokeWidth="4" strokeLinecap="round"
+                opacity="0.9"
+              />
+              {kind === "success" ? (
+                <path className="status-mark" d="M21 34.5 L29.5 43 L45 26"
+                  stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+              ) : (
+                <>
+                  <path className="status-mark" d="M24 24 L42 42"
+                    stroke="currentColor" strokeWidth="5" strokeLinecap="round" />
+                  <path className="status-mark" d="M42 24 L24 42"
+                    stroke="currentColor" strokeWidth="5" strokeLinecap="round" />
+                </>
+              )}
+            </svg>
+          )}
 
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 status-fade-up">
+
             <div className="text-xl font-extrabold leading-tight">{title}</div>
             {detail && <div className="text-sm text-muted-foreground whitespace-pre-line">{detail}</div>}
           </div>
