@@ -22,3 +22,26 @@ export const adminSetUserPassword = createServerFn({ method: "POST" })
     if (res.error) throw new Error(res.error.message);
     return { ok: true };
   });
+
+/** Admin-only: permanently delete a customer account and its profile. */
+export const adminDeleteUser = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: { userId: string }) => {
+    if (!data?.userId || typeof data.userId !== "string") throw new Error("invalid_user");
+    return data;
+  })
+  .handler(async ({ data, context }): Promise<{ ok: true }> => {
+    const { data: isAdmin, error } = await context.supabase.rpc("has_role", {
+      _user_id: context.userId,
+      _role: "admin",
+    });
+    if (error) throw new Error(error.message);
+    if (!isAdmin) throw new Error("forbidden");
+    if (data.userId === context.userId) throw new Error("cannot_delete_self");
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const res = await supabaseAdmin.auth.admin.deleteUser(data.userId);
+    if (res.error) throw new Error(res.error.message);
+    await supabaseAdmin.from("profiles").delete().eq("id", data.userId);
+    return { ok: true };
+  });

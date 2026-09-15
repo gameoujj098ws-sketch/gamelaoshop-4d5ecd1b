@@ -125,21 +125,21 @@ function LoginForm() {
   };
 
   return (
-    <div className="space-y-4">
+    <form className="space-y-4" method="post" action="#" onSubmit={(e) => { e.preventDefault(); submit(); }}>
       <div>
-        <Label className="font-bold">ຊື່ຜູ້ໃຊ້ ຫຼື ອີເມວ <span className="text-destructive">*</span></Label>
-        <Input value={id} onChange={(e) => setId(e.target.value)} placeholder="Username" className="rounded-2xl h-12 mt-1" />
+        <Label htmlFor="login-id" className="font-bold">ຊື່ຜູ້ໃຊ້ ຫຼື ອີເມວ <span className="text-destructive">*</span></Label>
+        <Input id="login-id" name="username" autoComplete="username" value={id} onChange={(e) => setId(e.target.value)} placeholder="Username" className="rounded-2xl h-12 mt-1" />
       </div>
       <div>
-        <Label className="font-bold">ລະຫັດຜ່ານ <span className="text-destructive">*</span></Label>
-        <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="**********" className="rounded-2xl h-12 mt-1" />
+        <Label htmlFor="login-password" className="font-bold">ລະຫັດຜ່ານ <span className="text-destructive">*</span></Label>
+        <Input id="login-password" name="password" autoComplete="current-password" type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="**********" className="rounded-2xl h-12 mt-1" />
       </div>
-      <Button className="w-full h-12 rounded-2xl bg-gradient-to-b from-primary to-primary/80 text-lg font-bold" disabled={loading} onClick={submit}>
+      <Button type="submit" className="w-full h-12 rounded-2xl bg-gradient-to-b from-primary to-primary/80 text-lg font-bold" disabled={loading}>
         <LogIn className="h-5 w-5" /> ເຂົ້າສູ່ລະບົບ
       </Button>
       <HumanCheck verified={human} onVerified={setHuman} />
       <button type="button" onClick={forgot} className="text-sm text-primary underline w-full text-center">ລືມລະຫັດຜ່ານ?</button>
-    </div>
+    </form>
   );
 }
 
@@ -169,27 +169,27 @@ function RegisterForm({ onDone }: { onDone: () => void }) {
   };
 
   return (
-    <div className="space-y-4">
+    <form className="space-y-4" method="post" action="#" onSubmit={(e) => { e.preventDefault(); submit(); }}>
       <div>
-        <Label className="font-bold">ຊື່ຜູ້ໃຊ້ <span className="text-destructive">*</span></Label>
-        <Input value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} placeholder="Username" className="rounded-2xl h-12 mt-1" />
+        <Label htmlFor="reg-username" className="font-bold">ຊື່ຜູ້ໃຊ້ <span className="text-destructive">*</span></Label>
+        <Input id="reg-username" name="username" autoComplete="username" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} placeholder="Username" className="rounded-2xl h-12 mt-1" />
       </div>
       <div>
-        <Label className="font-bold">ອີເມວ <span className="text-destructive">*</span></Label>
-        <Input type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} placeholder="user@gmail.com" className="rounded-2xl h-12 mt-1" />
+        <Label htmlFor="reg-email" className="font-bold">ອີເມວ <span className="text-destructive">*</span></Label>
+        <Input id="reg-email" name="email" autoComplete="email" type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} placeholder="user@gmail.com" className="rounded-2xl h-12 mt-1" />
       </div>
       <div>
-        <Label className="font-bold">ລະຫັດຜ່ານ <span className="text-destructive">*</span></Label>
-        <Input type="password" value={f.pw} onChange={(e) => setF({ ...f, pw: e.target.value })} placeholder="**********" className="rounded-2xl h-12 mt-1" />
+        <Label htmlFor="reg-password" className="font-bold">ລະຫັດຜ່ານ <span className="text-destructive">*</span></Label>
+        <Input id="reg-password" name="new-password" autoComplete="new-password" type="password" value={f.pw} onChange={(e) => setF({ ...f, pw: e.target.value })} placeholder="**********" className="rounded-2xl h-12 mt-1" />
       </div>
       <div>
-        <Label className="font-bold">ຢືນຢັນລະຫັດຜ່ານ <span className="text-destructive">*</span></Label>
-        <Input type="password" value={f.confirm} onChange={(e) => setF({ ...f, confirm: e.target.value })} placeholder="**********" className="rounded-2xl h-12 mt-1" />
+        <Label htmlFor="reg-confirm" className="font-bold">ຢືນຢັນລະຫັດຜ່ານ <span className="text-destructive">*</span></Label>
+        <Input id="reg-confirm" name="confirm-password" autoComplete="new-password" type="password" value={f.confirm} onChange={(e) => setF({ ...f, confirm: e.target.value })} placeholder="**********" className="rounded-2xl h-12 mt-1" />
       </div>
-      <Button className="w-full h-12 rounded-2xl bg-gradient-to-b from-primary to-primary/80 text-lg font-bold" disabled={loading} onClick={submit}>
+      <Button type="submit" className="w-full h-12 rounded-2xl bg-gradient-to-b from-primary to-primary/80 text-lg font-bold" disabled={loading}>
         <UserPlus className="h-5 w-5" /> ສະໝັກສະມາຊິກ
       </Button>
       <HumanCheck verified={human} onVerified={setHuman} />
-    </div>
+    </form>
   );
 }
