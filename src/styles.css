@@ -172,3 +172,29 @@
 @keyframes spin-wheel-turn {
   to { transform: rotate(var(--spin-to, 360deg)); }
 }
+
+/* Standard result popup animations (success / error) */
+@keyframes status-pop {
+  0% { opacity: 0; transform: scale(.7); }
+  60% { opacity: 1; transform: scale(1.06); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes status-draw {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes status-fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.status-pop { animation: status-pop .35s cubic-bezier(.22,1.2,.36,1) both; }
+.status-fade-up { animation: status-fade-up .35s ease-out .12s both; }
+.status-circle {
+  stroke-dasharray: 166;
+  stroke-dashoffset: 166;
+  animation: status-draw .5s cubic-bezier(.65,0,.45,1) forwards;
+}
+.status-mark {
+  stroke-dasharray: 60;
+  stroke-dashoffset: 60;
+  animation: status-draw .35s cubic-bezier(.65,0,.45,1) .42s forwards;
+}
