@@ -1,6 +1,6 @@
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Check, X, AlertTriangle, HelpCircle, Loader2 } from "lucide-react";
+import { AlertTriangle, HelpCircle, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 type Kind = "success" | "error" | "loading" | "confirm";
