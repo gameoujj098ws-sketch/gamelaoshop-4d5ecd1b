@@ -54,7 +54,19 @@ async function fileToDataUrl(f: File): Promise<string> {
   });
 }
 
-export const Route = createFileRoute("/topup")({ component: TopupPage });
+export const Route = createFileRoute("/topup")({
+  component: TopupPage,
+  head: () => ({
+    meta: [
+      { title: "ເຕີມເງິນ — Game Lao" },
+      { name: "description", content: "ເຕີມເງິນເຂົ້າກະເປົາ Game Lao ດ້ວຍ QR Code, ບັດເຕີມເງິນ ຫຼື ລະຫັດ" },
+      { property: "og:title", content: "ເຕີມເງິນ — Game Lao" },
+      { property: "og:description", content: "ເຕີມເງິນເຂົ້າກະເປົາ Game Lao ຢ່າງປອດໄພ" },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+    ],
+  }),
+});
 
 const PRESETS = [10000, 20000, 50000, 100000, 200000, 500000];
 

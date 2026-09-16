@@ -21,10 +21,14 @@ export const verifyRecaptchaToken = createServerFn({ method: "POST" })
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({ secret, response: data.token }).toString(),
       });
+      if (!res.ok) return { ok: false as const, reason: "network_error" };
+
       const json = (await res.json()) as { success?: boolean; "error-codes"?: string[] };
       if (json.success) return { ok: true as const };
-      return { ok: false as const, reason: (json["error-codes"] ?? ["failed"]).join(",") };
+      const reason = (json["error-codes"] ?? ["failed"])[0] ?? "failed";
+      console.warn("reCAPTCHA verification rejected:", reason);
+      return { ok: false as const, reason };
     } catch {
-      return { ok: false as const, reason: "network_error" };
+      return { ok: false as const, reason: "internal_error" };
     }
   });

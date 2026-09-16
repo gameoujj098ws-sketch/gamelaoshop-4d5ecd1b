@@ -8,6 +8,7 @@ declare global {
     grecaptcha?: {
       render: (el: HTMLElement, opts: Record<string, unknown>) => number;
       reset: (id?: number) => void;
+      remove?: (id: number) => void;
     };
     __recaptchaOnLoad?: () => void;
   }
@@ -24,7 +25,10 @@ function loadRecaptchaScript() {
     s.src = "https://www.google.com/recaptcha/api.js?onload=__recaptchaOnLoad&render=explicit&hl=lo";
     s.async = true;
     s.defer = true;
-    s.onerror = () => reject(new Error("recaptcha_script_error"));
+    s.onerror = () => {
+      scriptPromise = null;
+      reject(new Error("recaptcha_script_error"));
+    };
     document.head.appendChild(s);
   });
   return scriptPromise;
@@ -43,9 +47,17 @@ export function Recaptcha({
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const widgetId = useRef<number | null>(null);
+  const mounted = useRef(true);
+  const verified = useRef(false);
+  const verifyingToken = useRef<string | null>(null);
+  const onVerifiedRef = useRef(onVerified);
+  const verifyFnRef = useRef<ReturnType<typeof useServerFn>>(undefined);
   const [error, setError] = useState<string | null>(null);
   const siteKeyFn = useServerFn(getRecaptchaSiteKey);
   const verifyFn = useServerFn(verifyRecaptchaToken);
+
+  onVerifiedRef.current = onVerified;
+  verifyFnRef.current = verifyFn;
 
   const { data } = useQuery({
     queryKey: ["recaptcha-site-key"],
@@ -57,6 +69,13 @@ export function Recaptcha({
   const configured = !!data?.configured;
 
   useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!configured || !siteKey || !boxRef.current || widgetId.current !== null) return;
     let cancelled = false;
     loadRecaptchaScript()
@@ -66,20 +85,50 @@ export function Recaptcha({
           sitekey: siteKey,
           theme,
           callback: async (token: string) => {
-            const res = await verifyFn({ data: { token } });
-            if (res.ok) {
-              setError(null);
-              onVerified(true);
-            } else {
-              setError("ການຢືນຢັນລົ້ມເຫຼວ ກະລຸນາລອງໃໝ່");
-              onVerified(false);
+            if (verified.current || verifyingToken.current === token) return;
+            verifyingToken.current = token;
+            setError(null);
+
+            try {
+              const verify = verifyFnRef.current;
+              if (!verify) throw new Error("verification_unavailable");
+              const res = await verify({ data: { token } });
+              if (!mounted.current) return;
+
+              if (res.ok) {
+                verified.current = true;
+                setError(null);
+                onVerifiedRef.current(true);
+                return;
+              }
+
+              const retryable = res.reason === "network_error" || res.reason === "internal_error";
+              setError(
+                retryable
+                  ? "ການເຊື່ອມຕໍ່ Google ຂັດຂ້ອງ ກະລຸນາກົດຢືນຢັນອີກຄັ້ງ"
+                  : "Google ບໍ່ສາມາດຢືນຢັນໄດ້ ກະລຸນາກົດຢືນຢັນອີກຄັ້ງ",
+              );
+              onVerifiedRef.current(false);
               window.grecaptcha?.reset(widgetId.current ?? undefined);
+            } catch {
+              if (!mounted.current) return;
+              setError("ການເຊື່ອມຕໍ່ Google ຂັດຂ້ອງ ກະລຸນາກົດຢືນຢັນອີກຄັ້ງ");
+              onVerifiedRef.current(false);
+              window.grecaptcha?.reset(widgetId.current ?? undefined);
+            } finally {
+              verifyingToken.current = null;
             }
           },
-          "expired-callback": () => onVerified(false),
+          "expired-callback": () => {
+            verified.current = false;
+            verifyingToken.current = null;
+            onVerifiedRef.current(false);
+          },
           "error-callback": () => {
             setError("ບໍ່ສາມາດໂຫຼດ reCAPTCHA");
-            onVerified(false);
+            verified.current = false;
+            verifyingToken.current = null;
+            onVerifiedRef.current(false);
           },
         });
       })
@@ -87,12 +136,12 @@ export function Recaptcha({
     return () => {
       cancelled = true;
     };
-  }, [configured, siteKey, theme, onVerified, verifyFn]);
+  }, [configured, siteKey, theme]);
 
   // Keys not configured yet: don't block the user.
   useEffect(() => {
-    if (data && !configured) onVerified(true);
-  }, [data, configured, onVerified]);
+    if (data && !configured) onVerifiedRef.current(true);
+  }, [data, configured]);
 
   if (data && !configured) return null;
 
