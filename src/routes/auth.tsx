@@ -15,6 +15,10 @@ export const Route = createFileRoute("/auth")({
     meta: [
       { title: "ເຂົ້າສູ່ລະບົບ / ສະໝັກ — Game Lao" },
       { name: "description", content: "ເຂົ້າສູ່ລະບົບ ຫຼື ສະໝັກສະມາຊິກເພື່ອຊື້ໄອດີເກມ Roblox" },
+      { property: "og:title", content: "ເຂົ້າສູ່ລະບົບ / ສະໝັກ — Game Lao" },
+      { property: "og:description", content: "ເຂົ້າສູ່ລະບົບ ຫຼື ສະໝັກສະມາຊິກເພື່ອຊື້ໄອດີເກມ Roblox" },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
 });
