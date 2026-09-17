@@ -16,6 +16,15 @@ declare global {
 
 let scriptPromise: Promise<void> | null = null;
 
+const verificationMessages: Record<string, string> = {
+  "missing-input-secret": "ລະບົບ reCAPTCHA ຍັງຕັ້ງຄ່າບໍ່ຄົບ",
+  "invalid-input-secret": "ລະຫັດລັບ reCAPTCHA ບໍ່ກົງກັບ Site key",
+  "missing-input-response": "Google ບໍ່ໄດ້ສົ່ງຜົນຢືນຢັນ ກະລຸນາລອງໃໝ່",
+  "invalid-input-response": "ຜົນຢືນຢັນຈາກ Google ບໍ່ຖືກຕ້ອງ ກະລຸນາລອງໃໝ່",
+  "timeout-or-duplicate": "ການຢືນຢັນໝົດເວລາ ກະລຸນາກົດຢືນຢັນອີກຄັ້ງ",
+  "bad-request": "Google ບໍ່ສາມາດກວດຄຳຂໍນີ້ໄດ້",
+};
+
 function loadRecaptchaScript() {
   if (scriptPromise) return scriptPromise;
   scriptPromise = new Promise<void>((resolve, reject) => {
@@ -103,11 +112,9 @@ export function Recaptcha({
               }
 
               const retryable = res.reason === "network_error" || res.reason === "internal_error";
-              setError(
-                retryable
-                  ? "ການເຊື່ອມຕໍ່ Google ຂັດຂ້ອງ ກະລຸນາກົດຢືນຢັນອີກຄັ້ງ"
-                  : "Google ບໍ່ສາມາດຢືນຢັນໄດ້ ກະລຸນາກົດຢືນຢັນອີກຄັ້ງ",
-              );
+              setError(retryable
+                ? "ການເຊື່ອມຕໍ່ Google ຂັດຂ້ອງ ກະລຸນາລອງໃໝ່"
+                : verificationMessages[res.reason] ?? "Google ບໍ່ສາມາດຢືນຢັນໄດ້ ກະລຸນາລອງໃໝ່");
               onVerifiedRef.current(false);
               window.grecaptcha?.reset(widgetId.current ?? undefined);
             } catch {
