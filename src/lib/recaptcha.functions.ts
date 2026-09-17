@@ -23,11 +23,25 @@ export const verifyRecaptchaToken = createServerFn({ method: "POST" })
       });
       if (!res.ok) return { ok: false as const, reason: "network_error" };
 
-      const json = (await res.json()) as { success?: boolean; "error-codes"?: string[] };
+      const json = (await res.json()) as {
+        success?: boolean;
+        hostname?: string;
+        "error-codes"?: string[];
+      };
       if (json.success) return { ok: true as const };
       const reason = (json["error-codes"] ?? ["failed"])[0] ?? "failed";
       console.warn("reCAPTCHA verification rejected:", reason);
-      return { ok: false as const, reason };
+      const safeReason = [
+        "missing-input-secret",
+        "invalid-input-secret",
+        "missing-input-response",
+        "invalid-input-response",
+        "timeout-or-duplicate",
+        "bad-request",
+      ].includes(reason)
+        ? reason
+        : "failed";
+      return { ok: false as const, reason: safeReason };
     } catch {
       return { ok: false as const, reason: "internal_error" };
     }
